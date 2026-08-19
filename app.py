@@ -126,9 +126,12 @@ with T[3]:
         st.success(f'{jid} created → Machine History + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
 
 with T[4]:
-    st.subheader('Machine History Card — PM + BM')
+    st.subheader('Machine History Card — PM/BM')
     code=st.selectbox('Machine',MACH.machine_code.tolist(),key='histcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}')
-    st.dataframe(q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? order by id desc',(code,)),use_container_width=True,hide_index=True)
+    activity_type=st.radio('Maintenance Activity Type',['PM','BM'],horizontal=True,key='hist_activity_type')
+    st.caption('Select PM for Preventive Maintenance history or BM for Breakdown Maintenance history.')
+    history_view=q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? and maintenance_type=? order by id desc',(code,activity_type))
+    st.dataframe(history_view,use_container_width=True,hide_index=True)
 
 with T[5]:
     st.subheader('Breakdown History Card')
