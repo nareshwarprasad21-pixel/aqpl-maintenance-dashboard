@@ -129,7 +129,49 @@ with T[4]:
     st.subheader('Machine History Card — PM/BM')
     code=st.selectbox('Machine',MACH.machine_code.tolist(),key='histcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}')
     activity_type=st.radio('Maintenance Activity Type',['PM','BM'],horizontal=True,key='hist_activity_type')
-    st.caption('Select PM for Preventive Maintenance history or BM for Breakdown Maintenance history.')
+    st.caption('Select PM for Preventive Maintenance or BM for Breakdown Maintenance. You can add a new history entry below.')
+
+    st.markdown('### ➕ Fill / Add Maintenance History')
+    default_jid=new_id(activity_type)
+    with st.form('manual_history_form',clear_on_submit=True):
+        c1,c2,c3=st.columns([1.4,1,1])
+        jid=c1.text_input('Job / Work Order ID',value=default_jid)
+        start_date=c2.date_input('Start Date',value=TODAY)
+        start_time=c3.time_input('Start Time',value=datetime.now().time().replace(second=0,microsecond=0))
+        problem=st.text_area('Problem / Maintenance Activity',placeholder='PM activity performed or breakdown/problem details')
+        action=st.text_area('Action Taken / Work Done',placeholder='Inspection, repair, replacement, adjustment, lubrication, etc.')
+        r1,r2=st.columns(2)
+        restart_date=r1.date_input('Restart / Completion Date',value=TODAY)
+        restart_time=r2.time_input('Restart / Completion Time',value=datetime.now().time().replace(second=0,microsecond=0))
+        remark=st.text_area('Remark / Observation')
+        if activity_type=='BM':
+            b1,b2=st.columns(2)
+            cause=b1.text_input('Breakdown Cause / Suspected Cause')
+            downtime=b2.number_input('Downtime Hours',min_value=0.0,step=0.25)
+            spares=st.text_input('Spares / Material Used')
+        else:
+            cause=''; downtime=0.0; spares=''
+        save_history=st.form_submit_button(f'Save {activity_type} History',type='primary')
+
+    if save_history:
+        if not problem.strip():
+            st.error('Problem / Maintenance Activity field is required.')
+        elif not action.strip():
+            st.error('Action Taken / Work Done field is required.')
+        else:
+            start_dt=datetime.combine(start_date,start_time).isoformat(timespec='minutes')
+            restart_dt=datetime.combine(restart_date,restart_time).isoformat(timespec='minutes')
+            execsql('insert or replace into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,activity_type,code,mr.machine_name,mr.location,start_dt,problem,'CLOSED',0,0,restart_dt))
+            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,activity_type,start_dt,problem,action,restart_dt,remark))
+            if activity_type=='BM':
+                execsql('insert into breakdowns(job_id,machine_code,failure,cause,downtime_hr,spares,action,status) values(?,?,?,?,?,?,?,?)',(jid,code,problem,cause,downtime,spares,action,'CLOSED'))
+                existing=q('select id from whywhy where job_id=?',(jid,))
+                if not len(existing): execsql('insert into whywhy(job_id,machine_code,problem,status) values(?,?,?,?)',(jid,code,problem,'DRAFT'))
+                st.success(f'BM history saved for {mr.machine_name}. Breakdown History and Why-Why draft also linked automatically. Job ID: {jid}')
+            else:
+                st.success(f'PM history saved for {mr.machine_name}. Job ID: {jid}')
+
+    st.markdown('### 📚 Saved History')
     history_view=q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? and maintenance_type=? order by id desc',(code,activity_type))
     st.dataframe(history_view,use_container_width=True,hide_index=True)
 
