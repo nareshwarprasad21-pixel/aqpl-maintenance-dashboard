@@ -2,6 +2,17 @@ import streamlit as st
 import pandas as pd
 import sqlite3, json, os, re
 from typing import Any
+from io import BytesIO
+from xml.sax.saxutils import escape
+
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 
 try:
     from supabase import create_client
@@ -179,6 +190,138 @@ if USE_SUPABASE:
 else:
     st.sidebar.warning('Local database active · add Supabase secrets')
 
+def build_pm_checksheet_pdf(job,checks,machine):
+    """Return a professional A4 PM checklist as PDF bytes."""
+    def val(source,key,default=''):
+        try:
+            value=source.get(key,default)
+        except AttributeError:
+            value=default
+        if value is None:
+            return default
+        try:
+            if pd.isna(value):
+                return default
+        except (TypeError,ValueError):
+            pass
+        return str(value)
+
+    regular='Helvetica'; bold='Helvetica-Bold'
+    font_paths=[
+        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf','/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+        ('/usr/share/fonts/dejavu/DejaVuSans.ttf','/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf')
+    ]
+    for regular_path,bold_path in font_paths:
+        if os.path.exists(regular_path) and os.path.exists(bold_path):
+            try:
+                pdfmetrics.registerFont(TTFont('AQPLSans',regular_path))
+                pdfmetrics.registerFont(TTFont('AQPLSansBold',bold_path))
+                regular='AQPLSans'; bold='AQPLSansBold'
+                break
+            except Exception:
+                pass
+
+    buffer=BytesIO()
+    doc=SimpleDocTemplate(buffer,pagesize=A4,rightMargin=12*mm,leftMargin=12*mm,
+                          topMargin=15*mm,bottomMargin=16*mm,
+                          title=f"PM Check Sheet - {val(job,'job_id')}",
+                          author='Asian Quartz Pvt Ltd')
+    styles=getSampleStyleSheet()
+    title_style=ParagraphStyle('AQPLTitle',parent=styles['Title'],fontName=bold,
+        fontSize=15,leading=18,textColor=colors.HexColor('#10213b'),alignment=TA_CENTER,spaceAfter=2*mm)
+    subtitle_style=ParagraphStyle('AQPLSubTitle',parent=styles['Heading2'],fontName=bold,
+        fontSize=11,leading=14,textColor=colors.HexColor('#1d4ed8'),alignment=TA_CENTER,spaceAfter=4*mm)
+    body_style=ParagraphStyle('AQPLBody',parent=styles['BodyText'],fontName=regular,
+        fontSize=7.5,leading=9.5,textColor=colors.HexColor('#111827'))
+    body_bold=ParagraphStyle('AQPLBodyBold',parent=body_style,fontName=bold)
+    header_style=ParagraphStyle('AQPLHeader',parent=body_bold,textColor=colors.white,alignment=TA_CENTER)
+    small_style=ParagraphStyle('AQPLSmall',parent=body_style,fontSize=7,leading=8.5)
+    story=[
+        Paragraph('ASIAN QUARTZ PVT LTD',title_style),
+        Paragraph('PREVENTIVE MAINTENANCE CHECK SHEET',subtitle_style)
+    ]
+    meta=[
+        [Paragraph('<b>Machine Name</b>',body_bold),Paragraph(escape(val(machine,'machine_name')),body_style),
+         Paragraph('<b>Machine Code</b>',body_bold),Paragraph(escape(val(machine,'machine_code')),body_style)],
+        [Paragraph('<b>Location / Type</b>',body_bold),Paragraph(escape(val(machine,'location')),body_style),
+         Paragraph('<b>Make / Model</b>',body_bold),Paragraph(escape(val(machine,'make_model')),body_style)],
+        [Paragraph('<b>Job / WO ID</b>',body_bold),Paragraph(escape(val(job,'job_id')),body_style),
+         Paragraph('<b>Maintenance Date</b>',body_bold),Paragraph(escape(val(job,'opened_at')),body_style)],
+        [Paragraph('<b>Job Status</b>',body_bold),Paragraph(escape(val(job,'status','OPEN')),body_style),
+         Paragraph('<b>Permit Requirement</b>',body_bold),
+         Paragraph(f"Hot Work: {'YES' if val(job,'hot_work','0') in ('1','True','true') else 'NO'} &nbsp;&nbsp; Height Work: {'YES' if val(job,'height_work','0') in ('1','True','true') else 'NO'}",body_style)]
+    ]
+    meta_table=Table(meta,colWidths=[30*mm,61*mm,32*mm,61*mm])
+    meta_table.setStyle(TableStyle([
+        ('GRID',(0,0),(-1,-1),0.45,colors.HexColor('#94a3b8')),
+        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#e2e8f0')),
+        ('BACKGROUND',(2,0),(2,-1),colors.HexColor('#e2e8f0')),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
+        ('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),
+        ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)
+    ]))
+    story.extend([meta_table,Spacer(1,5*mm)])
+
+    header=[Paragraph('<b>S.No.</b>',header_style),Paragraph('<b>Check Point</b>',header_style),
+            Paragraph('<b>Status</b>',header_style),Paragraph('<b>Action Taken</b>',header_style),
+            Paragraph('<b>Remarks / Observation</b>',header_style)]
+    rows=[header]
+    if isinstance(checks,pd.DataFrame):
+        records=checks.to_dict('records')
+    else:
+        records=list(checks)
+    for index,item in enumerate(records,1):
+        rows.append([
+            Paragraph(str(index),small_style),
+            Paragraph(escape(val(item,'check_point')),small_style),
+            Paragraph(escape(val(item,'result')),small_style),
+            Paragraph(escape(val(item,'action')),small_style),
+            Paragraph(escape(val(item,'remark')),small_style)
+        ])
+    checklist=Table(rows,colWidths=[12*mm,71*mm,22*mm,38*mm,41*mm],repeatRows=1)
+    checklist.setStyle(TableStyle([
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#10213b')),
+        ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+        ('GRID',(0,0),(-1,-1),0.4,colors.HexColor('#94a3b8')),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('ALIGN',(0,0),(0,-1),'CENTER'),('ALIGN',(2,1),(2,-1),'CENTER'),
+        ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f8fafc')]),
+        ('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3),
+        ('TOPPADDING',(0,0),(-1,-1),3.5),('BOTTOMPADDING',(0,0),(-1,-1),3.5)
+    ]))
+    story.extend([checklist,Spacer(1,7*mm)])
+    signatures=[
+        [Paragraph('<b>Prepared / Performed By</b>',body_bold),
+         Paragraph('<b>Checked By</b>',body_bold),
+         Paragraph('<b>Approved By</b>',body_bold)],
+        [Paragraph('<br/><br/>Name &amp; Sign: __________________',body_style),
+         Paragraph('<br/><br/>Maintenance Engineer: ____________',body_style),
+         Paragraph('<br/><br/>HOD / Plant Head: ________________',body_style)],
+        [Paragraph('Date: _____________________________',body_style),
+         Paragraph('Date: _____________________________',body_style),
+         Paragraph('Date: _____________________________',body_style)]
+    ]
+    sign_table=Table(signatures,colWidths=[61.3*mm]*3)
+    sign_table.setStyle(TableStyle([
+        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#64748b')),
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e2e8f0')),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),
+        ('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)
+    ]))
+    story.append(sign_table)
+
+    def footer(canvas,document):
+        canvas.saveState()
+        canvas.setFont(regular,7)
+        canvas.setFillColor(colors.HexColor('#64748b'))
+        canvas.drawString(12*mm,8*mm,f"Document: AQPL/MAINT/PM | Job: {val(job,'job_id')}")
+        canvas.drawRightString(A4[0]-12*mm,8*mm,f"Page {document.page}")
+        canvas.restoreState()
+
+    doc.build(story,onFirstPage=footer,onLaterPages=footer)
+    return buffer.getvalue()
+
 def new_id(kind): return f"AQPL-{kind}-{datetime.now():%Y%m%d-%H%M%S}"
 def machine_row(code): return MACH[MACH.machine_code==code].iloc[0]
 
@@ -286,6 +429,28 @@ with T[2]:
             if hot: execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,'PM related hot work','DRAFT'))
             if height: execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,'PM related height work','DRAFT'))
             st.success(f'PM Check Sheet saved for {mr.machine_name}. Actions + Remarks saved separately, Machine History updated, and required permit draft(s) created. Job ID: {jid}')
+            current_job={'job_id':jid,'opened_at':now,'status':'OPEN','hot_work':int(hot),'height_work':int(height)}
+            current_checks=[{'check_point':pt,'result':status,'action':action_txt,'remark':remark} for pt,status,action_txt,remark in results]
+            current_pdf=build_pm_checksheet_pdf(current_job,current_checks,mr)
+            st.download_button('📄 Download This PM Check Sheet PDF',data=current_pdf,
+                file_name=f"PM_Check_Sheet_{jid.replace('/','-')}.pdf",mime='application/pdf',
+                key=f'current_pm_pdf_{jid}',on_click='ignore')
+
+        st.markdown('#### 📚 Saved PM Check Sheets - Download / Print')
+        saved_pm_jobs=q("select * from jobs where machine_code=? and job_type='PM' order by opened_at desc",(code,))
+        if saved_pm_jobs.empty:
+            st.info('इस machine की saved PM Check Sheet अभी उपलब्ध नहीं है।')
+        else:
+            saved_job_id=st.selectbox('Select saved PM Job / Work Order ID',saved_pm_jobs.job_id.tolist(),key=f'saved_pm_job_{code}')
+            saved_job=saved_pm_jobs[saved_pm_jobs.job_id==saved_job_id].iloc[0]
+            saved_checks=q('select check_point,result,action,remark from pm_checks where job_id=? order by id',(saved_job_id,))
+            if saved_checks.empty:
+                st.warning('इस Job ID के checklist details उपलब्ध नहीं हैं।')
+            else:
+                saved_pdf=build_pm_checksheet_pdf(saved_job,saved_checks,mr)
+                st.download_button('⬇️ Download Saved PM Check Sheet PDF',data=saved_pdf,
+                    file_name=f"PM_Check_Sheet_{saved_job_id.replace('/','-')}.pdf",mime='application/pdf',
+                    key=f'saved_pm_pdf_{saved_job_id}',on_click='ignore')
 
 with T[3]:
     st.subheader('Breakdown Maintenance — Start Linked BM Workflow'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='bmcode'); mr=machine_row(code); st.info(f"{mr.machine_name} | {mr.location} | {mr.make_model}")
