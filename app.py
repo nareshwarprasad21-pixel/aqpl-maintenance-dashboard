@@ -1,6 +1,12 @@
 import streamlit as st
 import pandas as pd
 import sqlite3, json, os, re
+from typing import Any
+
+try:
+    from supabase import create_client
+except ImportError:
+    create_client=None
 from datetime import date, datetime, timedelta
 
 st.set_page_config(page_title='AQPL Maintenance Management', page_icon='🛠️', layout='wide')
@@ -26,6 +32,28 @@ def load_static():
     return m,p,c
 MACH,PLAN,CHECKS=load_static()
 
+TABLE_COLUMNS={
+    'jobs':['job_id','job_type','machine_code','machine_name','location','opened_at','problem','status','hot_work','height_work','closed_at'],
+    'pm_checks':['id','job_id','machine_code','check_point','result','action','remark','created_at'],
+    'history':['id','job_id','machine_code','maintenance_type','start_dt','problem','action_taken','restart_dt','remark'],
+    'breakdowns':['id','job_id','machine_code','failure','cause','downtime_hr','spares','action','status'],
+    'breakdown_activity_log':['id','machine_code','job_id','activity_dt','failure','cause','action','spares','downtime_hr','status','remark'],
+    'permits':['id','permit_no','job_id','permit_type','machine_code','activity','supervisor','start_dt','end_dt','status','precautions'],
+    'whywhy':['id','job_id','machine_code','problem','why1','why2','why3','why4','why5','root_cause','corrective','preventive','owner','target_date','effectiveness','status'],
+    'checklist_map':['machine_code','sheet_name']
+}
+
+def _secret(name):
+    try:
+        return str(st.secrets.get(name,'')).strip()
+    except Exception:
+        return str(os.getenv(name,'')).strip()
+
+SUPABASE_URL=_secret('SUPABASE_URL')
+SUPABASE_SECRET_KEY=_secret('SUPABASE_SECRET_KEY') or _secret('SUPABASE_SERVICE_ROLE_KEY')
+USE_SUPABASE=bool(create_client and SUPABASE_URL and SUPABASE_SECRET_KEY)
+SB=create_client(SUPABASE_URL,SUPABASE_SECRET_KEY) if USE_SUPABASE else None
+
 def conn():
     c=sqlite3.connect(DB,check_same_thread=False)
     c.executescript('''
@@ -40,8 +68,107 @@ def conn():
     '''); c.commit(); return c
 C=conn()
 
-def q(sql,args=()): return pd.read_sql_query(sql,C,params=args)
-def execsql(sql,args=()): C.execute(sql,args); C.commit()
+def _clean_value(value:Any):
+    if value is None or (isinstance(value,float) and pd.isna(value)):
+        return None
+    if isinstance(value,(pd.Timestamp,datetime,date)):
+        return value.isoformat()
+    return value
+
+def _parse_where(builder,where_part,args):
+    arg_index=0
+    for clause in re.split(r'\s+and\s+',where_part,flags=re.I):
+        clause=clause.strip()
+        match=re.match(r"(\w+)\s*(=|!=|<>)\s*(\?|'.*?'|\".*?\"|[-\d.]+)$",clause)
+        if not match:
+            raise ValueError(f'Unsupported database filter: {clause}')
+        column,operator,token=match.groups()
+        if token=='?':
+            value=args[arg_index]; arg_index+=1
+        elif token[:1] in ("'",'"'):
+            value=token[1:-1]
+        else:
+            value=float(token) if '.' in token else int(token)
+        builder=builder.neq(column,value) if operator in ('!=','<>') else builder.eq(column,value)
+    return builder
+
+def q(sql,args=()):
+    if not USE_SUPABASE:
+        return pd.read_sql_query(sql,C,params=args)
+    normalized=' '.join(sql.strip().split())
+    match=re.match(r'select (.+?) from (\w+)(.*)$',normalized,re.I)
+    if not match:
+        raise ValueError(f'Unsupported SELECT: {sql}')
+    selected,table,tail=match.groups()
+    limit_match=re.search(r'\s+limit\s+(\d+)\s*$',tail,re.I)
+    limit=int(limit_match.group(1)) if limit_match else None
+    if limit_match: tail=tail[:limit_match.start()]
+    order_match=re.search(r'\s+order\s+by\s+(\w+)(?:\s+(asc|desc))?\s*$',tail,re.I)
+    order_col=order_match.group(1) if order_match else None
+    order_desc=bool(order_match and (order_match.group(2) or '').lower()=='desc')
+    if order_match: tail=tail[:order_match.start()]
+    where_match=re.search(r'\s+where\s+(.+)$',tail,re.I)
+    builder=SB.table(table).select(selected)
+    if where_match: builder=_parse_where(builder,where_match.group(1),args)
+    if order_col: builder=builder.order(order_col,desc=order_desc)
+    if limit is not None: builder=builder.limit(limit)
+    rows=builder.execute().data or []
+    columns=TABLE_COLUMNS[table] if selected=='*' else [x.strip() for x in selected.split(',')]
+    return pd.DataFrame(rows,columns=columns)
+
+def execsql(sql,args=()):
+    if not USE_SUPABASE:
+        C.execute(sql,args); C.commit(); return
+    normalized=' '.join(sql.strip().split())
+    insert_match=re.match(r'insert\s+(or\s+replace\s+)?into\s+(\w+)\s*(?:\(([^)]+)\))?\s+values\s*\(([^)]+)\)',normalized,re.I)
+    if insert_match:
+        replace,table,columns,_=insert_match.groups()
+        cols=[c.strip() for c in columns.split(',')] if columns else TABLE_COLUMNS[table]
+        payload={col:_clean_value(value) for col,value in zip(cols,args)}
+        if payload.get('id') is None: payload.pop('id',None)
+        command=SB.table(table).upsert(payload) if replace else SB.table(table).insert(payload)
+        command.execute(); return
+    update_match=re.match(r'update\s+(\w+)\s+set\s+(.+?)\s+where\s+(\w+)\s*=\s*\?',normalized,re.I)
+    if update_match:
+        table,set_part,where_col=update_match.groups()
+        set_cols=[piece.split('=')[0].strip() for piece in set_part.split(',')]
+        payload={col:_clean_value(value) for col,value in zip(set_cols,args[:-1])}
+        SB.table(table).update(payload).eq(where_col,args[-1]).execute(); return
+    delete_match=re.match(r'delete\s+from\s+(\w+)\s+where\s+(\w+)\s*=\s*\?',normalized,re.I)
+    if delete_match:
+        table,where_col=delete_match.groups()
+        SB.table(table).delete().eq(where_col,args[0]).execute(); return
+    raise ValueError(f'Unsupported database write: {sql}')
+
+def _bootstrap_local_data():
+    if not USE_SUPABASE or not os.path.exists(DB):
+        return
+    marker='supabase_bootstrap_complete'
+    if st.session_state.get(marker):
+        return
+    for table,columns in TABLE_COLUMNS.items():
+        remote=SB.table(table).select(columns[0]).limit(1).execute().data or []
+        if remote:
+            continue
+        try:
+            local=pd.read_sql_query(f'select * from {table}',C)
+        except Exception:
+            continue
+        if local.empty:
+            continue
+        records=[{k:_clean_value(v) for k,v in row.items()} for row in local.to_dict('records')]
+        SB.table(table).insert(records).execute()
+    st.session_state[marker]=True
+
+if USE_SUPABASE:
+    try:
+        _bootstrap_local_data()
+        st.sidebar.success('☁️ Supabase connected')
+    except Exception as exc:
+        st.sidebar.error(f'Supabase connection error: {exc}')
+else:
+    st.sidebar.warning('Local database active · add Supabase secrets')
+
 def new_id(kind): return f"AQPL-{kind}-{datetime.now():%Y%m%d-%H%M%S}"
 def machine_row(code): return MACH[MACH.machine_code==code].iloc[0]
 
