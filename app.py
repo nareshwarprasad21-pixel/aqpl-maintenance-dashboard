@@ -99,21 +99,56 @@ with T[1]:
     st.caption('Calendar से date चुनें → उस date की machines filter होंगी → machine select करें → PM Check Sheet tab में वही machine automatically pre-selected होगी।')
 
 with T[2]:
-    st.subheader('Preventive Maintenance Check Sheet'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode'); mr=machine_row(code); st.info(f"{mr.machine_name} | {mr.location} | {mr.make_model}"); sheet=checklist_for(code)
-    if not sheet or sheet not in CHECKS: st.warning('⚠️ PM Checklist Pending / Not Configured for this machine. Use Checklist Mapping tab when checklist becomes available.')
+    st.subheader('Preventive Maintenance Check Sheet')
+    code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode')
+    mr=machine_row(code)
+    sheet=checklist_for(code)
+    if not sheet or sheet not in CHECKS:
+        st.warning('⚠️ PM Checklist Pending / Not Configured for this machine. Use Checklist Mapping tab when checklist becomes available.')
     else:
-        st.caption(f'Checklist source: {sheet} · Machine code auto-linked: {code}'); jid=st.text_input('PM Work Order / Job ID',value=new_id('PM'),key='pmjid'); results=[]
+        st.markdown(f'### PREVENTIVE MAINTENANCE CHECK SHEET FOR {mr.machine_name}')
+        m1,m2,m3,m4=st.columns(4)
+        m1.text_input('Machine Name',value=str(mr.machine_name),disabled=True,key='pm_machine_name')
+        m2.text_input('Machine Number / Code',value=code,disabled=True,key='pm_machine_code')
+        maintenance_date=m3.date_input('Maintenance Date',value=TODAY,key='pm_maintenance_date')
+        machine_type=m4.text_input('Machine Type',value=str(mr.location),key='pm_machine_type')
+        d1,d2=st.columns([2,1])
+        d1.info(f'Make / Model: {mr.make_model} | Location: {mr.location} | Checklist source: {sheet}')
+        jid=d2.text_input('PM Work Order / Job ID',value=new_id('PM'),key='pmjid')
+        st.markdown('#### Checklist Details')
+        st.caption('Actual AQPL format की तरह हर check point के लिए Status, Action और Remark अलग-अलग भरें।')
+        results=[]
         with st.form('pmform'):
+            h1,h2,h3,h4,h5=st.columns([0.7,4.6,2,3.4,3.4])
+            h1.markdown('**S.No.**'); h2.markdown('**Check Points**'); h3.markdown('**Status**'); h4.markdown('**Actions**'); h5.markdown('**Remarks**')
             for i,pt in enumerate(CHECKS[sheet],1):
-                a,b,c=st.columns([5,2,4]); a.write(f'{i}. {pt}'); status=b.selectbox('Status',['OK','NOT OK','N/A'],key=f's{i}',label_visibility='collapsed'); remark=c.text_input('Action / Remark',key=f'r{i}',label_visibility='collapsed'); results.append((pt,status,remark))
-            hot=st.checkbox('Hot work involved'); height=st.checkbox('Height work involved'); submit=st.form_submit_button('Submit PM & Update History',type='primary')
+                a,b,c,d,e=st.columns([0.7,4.6,2,3.4,3.4])
+                a.write(i)
+                b.write(pt)
+                status=c.selectbox('Status',['OK','NOT OK','N/A'],key=f's{i}',label_visibility='collapsed')
+                action_txt=d.text_input('Action',key=f'a{i}',label_visibility='collapsed',placeholder='Work/action done')
+                remark=e.text_input('Remark',key=f'r{i}',label_visibility='collapsed',placeholder='Observation/condition')
+                results.append((pt,status,action_txt,remark))
+            st.markdown('#### Safety / Permit Requirement')
+            hot=st.checkbox('Hot work involved')
+            height=st.checkbox('Height work involved')
+            submit=st.form_submit_button('Submit PM Check Sheet & Update History',type='primary')
         if submit:
-            now=datetime.now().isoformat(timespec='minutes'); execsql('insert or replace into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'PM',code,mr.machine_name,mr.location,now,'Scheduled preventive maintenance','OPEN',int(hot),int(height),None))
-            for pt,status,remark in results:execsql('insert into pm_checks(job_id,machine_code,check_point,result,action,remark,created_at) values(?,?,?,?,?,?,?)',(jid,code,pt,status,remark,remark,now))
-            issues=[f'{p}: {r}' for p,s,r in results if s=='NOT OK']; action='; '.join(issues) if issues else 'PM checklist completed; no abnormality recorded.'; execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,'PM',now,'Scheduled PM',action,now,'Checklist submitted'))
-            if hot:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,'PM related hot work','DRAFT'))
-            if height:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,'PM related height work','DRAFT'))
-            st.success(f'PM saved. History updated. Job ID: {jid}. Required permit drafts created automatically.')
+            now=datetime.combine(maintenance_date,datetime.now().time().replace(second=0,microsecond=0)).isoformat(timespec='minutes')
+            execsql('insert or replace into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'PM',code,mr.machine_name,mr.location,now,'Scheduled preventive maintenance','OPEN',int(hot),int(height),None))
+            for pt,status,action_txt,remark in results:
+                execsql('insert into pm_checks(job_id,machine_code,check_point,result,action,remark,created_at) values(?,?,?,?,?,?,?)',(jid,code,pt,status,action_txt,remark,now))
+            issues=[]
+            actions_done=[]
+            for pt,status,action_txt,remark in results:
+                if status=='NOT OK': issues.append(f'{pt}: {remark or "NOT OK"}')
+                if action_txt.strip(): actions_done.append(f'{pt}: {action_txt}')
+            problem_text='; '.join(issues) if issues else 'Scheduled PM - no abnormality recorded.'
+            action_summary='; '.join(actions_done) if actions_done else 'PM checklist completed.'
+            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,'PM',now,problem_text,action_summary,now,f'Machine Type: {machine_type}; Checklist submitted'))
+            if hot: execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,'PM related hot work','DRAFT'))
+            if height: execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,'PM related height work','DRAFT'))
+            st.success(f'PM Check Sheet saved for {mr.machine_name}. Actions + Remarks saved separately, Machine History updated, and required permit draft(s) created. Job ID: {jid}')
 
 with T[3]:
     st.subheader('Breakdown Maintenance — Start Linked BM Workflow'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='bmcode'); mr=machine_row(code); st.info(f"{mr.machine_name} | {mr.location} | {mr.make_model}")
@@ -152,7 +187,17 @@ with T[5]:
     if len(existing)==0:
         existing=pd.DataFrame([{ 'id':None,'job_id':new_id('BM'),'activity_dt':datetime.now().isoformat(timespec='minutes'),'failure':'','cause':'','action':'','spares':'','downtime_hr':0.0,'status':'OPEN','remark':'' }])
     edited=st.data_editor(existing,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'bd_editor_{code}',column_config={
-        'id':st.column_config.NumberColumn('ID',disabled=True),'job_id':st.column_config.TextColumn('Job / WO ID'),'activity_dt':st.column_config.TextColumn('Date / Time'),'failure':st.column_config.TextColumn('Problem / Failure',width='large'),'cause':st.column_config.TextColumn('Cause',width='medium'),'action':st.column_config.TextColumn('Activity / Action Taken',width='large'),'spares':st.column_config.TextColumn('Spares / Material',width='medium'),'downtime_hr':st.column_config.NumberColumn('Downtime Hr',min_value=0.0,step=0.25),'status':st.column_config.SelectboxColumn('Status',options=['OPEN','IN PROGRESS','CLOSED']),'remark':st.column_config.TextColumn('Remark',width='large')})
+        'id':st.column_config.NumberColumn('ID',disabled=True),
+        'job_id':st.column_config.TextColumn('Job / WO ID'),
+        'activity_dt':st.column_config.TextColumn('Date / Time'),
+        'failure':st.column_config.TextColumn('Problem / Failure',width='large'),
+        'cause':st.column_config.TextColumn('Cause',width='medium'),
+        'action':st.column_config.TextColumn('Activity / Action Taken',width='large'),
+        'spares':st.column_config.TextColumn('Spares / Material',width='medium'),
+        'downtime_hr':st.column_config.NumberColumn('Downtime Hr',min_value=0.0,step=0.25),
+        'status':st.column_config.SelectboxColumn('Status',options=['OPEN','IN PROGRESS','CLOSED']),
+        'remark':st.column_config.TextColumn('Remark',width='large')
+    })
     csave,cinfo=st.columns([1,3])
     if csave.button('💾 Save Breakdown History',type='primary',use_container_width=True):
         cleaned=edited.copy(); cleaned=cleaned[cleaned[['failure','action','cause','spares','remark']].fillna('').astype(str).apply(lambda r: ''.join(r).strip()!='',axis=1)]
@@ -160,7 +205,8 @@ with T[5]:
         for _,r in cleaned.iterrows():
             jid=str(r.get('job_id') or new_id('BM')); adt=str(r.get('activity_dt') or datetime.now().isoformat(timespec='minutes')); failure=str(r.get('failure') or ''); cause=str(r.get('cause') or ''); action=str(r.get('action') or ''); spares=str(r.get('spares') or ''); downtime=float(r.get('downtime_hr') or 0.0); status=str(r.get('status') or 'OPEN'); remark=str(r.get('remark') or '')
             execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,adt,failure,cause,action,spares,downtime,status,remark))
-        st.success(f'{len(cleaned)} breakdown activity row(s) saved for {mr.machine_name}.'); st.rerun()
+        st.success(f'{len(cleaned)} breakdown activity row(s) saved for {mr.machine_name}.')
+        st.rerun()
     cinfo.info('नई row जोड़ने के लिए table के नीचे + icon/use dynamic row करें; पुरानी rows भी edit की जा सकती हैं।')
 
 with T[6]:
