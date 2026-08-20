@@ -70,12 +70,33 @@ with T[0]:
     st.subheader('Linked Workflow'); st.markdown('<div class="flow"><b>PM:</b> PM Plan → Due Alert → Machine Code → PM Check Sheet → Machine History → Close Job / Next Due</div>',unsafe_allow_html=True); st.markdown('<div class="flow"><b>BM:</b> Breakdown → Work Order → Machine History → Breakdown History → Permit(s) if needed → Why-Why RCA → Closure</div>',unsafe_allow_html=True)
 
 with T[1]:
-    st.subheader('Preventive Maintenance Plan — 2026–27'); c1,c2,c3=st.columns(3); loc=c1.selectbox('Location',['ALL']+sorted(MACH.location.unique().tolist())); days=c2.selectbox('Window',['All','Due/Overdue','Next 7 days','Next 30 days']); search=c3.text_input('Machine / Code search'); x=PLAN.merge(MACH[['machine_code','location','make_model']],on='machine_code',how='left'); x=x[x.location==loc] if loc!='ALL' else x
-    if days=='Due/Overdue':x=x[x.scheduled_date<=TODAY]
-    elif days=='Next 7 days':x=x[(x.scheduled_date>=TODAY)&(x.scheduled_date<=TODAY+timedelta(days=7))]
-    elif days=='Next 30 days':x=x[(x.scheduled_date>=TODAY)&(x.scheduled_date<=TODAY+timedelta(days=30))]
-    if search:x=x[x.machine_name.str.contains(search,case=False)|x.machine_code.str.contains(search,case=False)]
-    st.dataframe(x.sort_values('scheduled_date'),use_container_width=True,hide_index=True); st.caption('PM date reaches today → dashboard Due alert. Open PM Check Sheet tab and select the same Machine Code.')
+    st.subheader('Preventive Maintenance Plan — 2026–27')
+    c1,c2,c3,c4=st.columns([1.05,1.05,1.05,1.35])
+    loc=c1.selectbox('Location',['ALL']+sorted(MACH.location.unique().tolist()))
+    days=c2.selectbox('Window',['Selected date','All','Due/Overdue','Next 7 days','Next 30 days'])
+    selected_date=c3.date_input('📅 Schedule Date',value=TODAY,help='Calendar icon पर click करके date चुनें। उस date की scheduled machines नीचे दिखाई देंगी।')
+    search=c4.text_input('Machine / Code search')
+    x=PLAN.merge(MACH[['machine_code','location','make_model']],on='machine_code',how='left')
+    if loc!='ALL': x=x[x.location==loc]
+    if days=='Selected date': x=x[x.scheduled_date==selected_date]
+    elif days=='Due/Overdue': x=x[x.scheduled_date<=TODAY]
+    elif days=='Next 7 days': x=x[(x.scheduled_date>=TODAY)&(x.scheduled_date<=TODAY+timedelta(days=7))]
+    elif days=='Next 30 days': x=x[(x.scheduled_date>=TODAY)&(x.scheduled_date<=TODAY+timedelta(days=30))]
+    if search: x=x[x.machine_name.str.contains(search,case=False)|x.machine_code.str.contains(search,case=False)]
+    x=x.sort_values(['scheduled_date','machine_name'])
+    if days=='Selected date':
+        st.info(f'📅 {selected_date:%d-%m-%Y} को {len(x)} machine(s) की PM scheduled है।')
+        if len(x):
+            scheduled_options=[f"{r.machine_name} | {r.machine_code}" for _,r in x.iterrows()]
+            selected_machine=st.selectbox('Select machine scheduled on this date',scheduled_options,key='pm_plan_machine_pick')
+            selected_code=selected_machine.split(' | ')[-1]
+            st.session_state['pmcode']=selected_code
+            sm=machine_row(selected_code)
+            st.success(f'Selected: {sm.machine_name} · {selected_code} · {sm.location}. PM Check Sheet tab में यही machine pre-selected रहेगी।')
+        else:
+            st.warning('इस selected date पर कोई PM activity scheduled नहीं है। दूसरी date चुनें।')
+    st.dataframe(x,use_container_width=True,hide_index=True,column_config={'scheduled_date':st.column_config.DateColumn('Scheduled Date',format='DD-MM-YYYY')})
+    st.caption('Calendar से date चुनें → उस date की machines filter होंगी → machine select करें → PM Check Sheet tab में वही machine automatically pre-selected होगी।')
 
 with T[2]:
     st.subheader('Preventive Maintenance Check Sheet'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode'); mr=machine_row(code); st.info(f"{mr.machine_name} | {mr.location} | {mr.make_model}"); sheet=checklist_for(code)
@@ -131,17 +152,7 @@ with T[5]:
     if len(existing)==0:
         existing=pd.DataFrame([{ 'id':None,'job_id':new_id('BM'),'activity_dt':datetime.now().isoformat(timespec='minutes'),'failure':'','cause':'','action':'','spares':'','downtime_hr':0.0,'status':'OPEN','remark':'' }])
     edited=st.data_editor(existing,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'bd_editor_{code}',column_config={
-        'id':st.column_config.NumberColumn('ID',disabled=True),
-        'job_id':st.column_config.TextColumn('Job / WO ID'),
-        'activity_dt':st.column_config.TextColumn('Date / Time'),
-        'failure':st.column_config.TextColumn('Problem / Failure',width='large'),
-        'cause':st.column_config.TextColumn('Cause',width='medium'),
-        'action':st.column_config.TextColumn('Activity / Action Taken',width='large'),
-        'spares':st.column_config.TextColumn('Spares / Material',width='medium'),
-        'downtime_hr':st.column_config.NumberColumn('Downtime Hr',min_value=0.0,step=0.25),
-        'status':st.column_config.SelectboxColumn('Status',options=['OPEN','IN PROGRESS','CLOSED']),
-        'remark':st.column_config.TextColumn('Remark',width='large')
-    })
+        'id':st.column_config.NumberColumn('ID',disabled=True),'job_id':st.column_config.TextColumn('Job / WO ID'),'activity_dt':st.column_config.TextColumn('Date / Time'),'failure':st.column_config.TextColumn('Problem / Failure',width='large'),'cause':st.column_config.TextColumn('Cause',width='medium'),'action':st.column_config.TextColumn('Activity / Action Taken',width='large'),'spares':st.column_config.TextColumn('Spares / Material',width='medium'),'downtime_hr':st.column_config.NumberColumn('Downtime Hr',min_value=0.0,step=0.25),'status':st.column_config.SelectboxColumn('Status',options=['OPEN','IN PROGRESS','CLOSED']),'remark':st.column_config.TextColumn('Remark',width='large')})
     csave,cinfo=st.columns([1,3])
     if csave.button('💾 Save Breakdown History',type='primary',use_container_width=True):
         cleaned=edited.copy(); cleaned=cleaned[cleaned[['failure','action','cause','spares','remark']].fillna('').astype(str).apply(lambda r: ''.join(r).strip()!='',axis=1)]
@@ -149,8 +160,7 @@ with T[5]:
         for _,r in cleaned.iterrows():
             jid=str(r.get('job_id') or new_id('BM')); adt=str(r.get('activity_dt') or datetime.now().isoformat(timespec='minutes')); failure=str(r.get('failure') or ''); cause=str(r.get('cause') or ''); action=str(r.get('action') or ''); spares=str(r.get('spares') or ''); downtime=float(r.get('downtime_hr') or 0.0); status=str(r.get('status') or 'OPEN'); remark=str(r.get('remark') or '')
             execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,adt,failure,cause,action,spares,downtime,status,remark))
-        st.success(f'{len(cleaned)} breakdown activity row(s) saved for {mr.machine_name}.')
-        st.rerun()
+        st.success(f'{len(cleaned)} breakdown activity row(s) saved for {mr.machine_name}.'); st.rerun()
     cinfo.info('नई row जोड़ने के लिए table के नीचे + icon/use dynamic row करें; पुरानी rows भी edit की जा सकती हैं।')
 
 with T[6]:
