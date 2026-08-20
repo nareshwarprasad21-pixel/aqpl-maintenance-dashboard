@@ -183,10 +183,16 @@ with T[5]:
     st.subheader('Breakdown History Card — Editable Activity Log')
     code=st.selectbox('Machine',MACH.machine_code.tolist(),key='bdhcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}')
     st.caption('हर breakdown/maintenance activity को अलग row में दर्ज करें। नीचे + row से जितनी चाहें entries जोड़ सकते हैं।')
-    existing=q('select id,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark from breakdown_activity_log where machine_code=? order by id',(code,))
-    if len(existing)==0:
-        existing=pd.DataFrame([{ 'id':None,'job_id':new_id('BM'),'activity_dt':datetime.now().isoformat(timespec='minutes'),'failure':'','cause':'','action':'','spares':'','downtime_hr':0.0,'status':'OPEN','remark':'' }])
-    edited=st.data_editor(existing,num_rows='dynamic',use_container_width=True,hide_index=True,key=f'bd_editor_{code}',column_config={
+    # Keep the editable grid in session state. Without this, every widget rerun
+    # reloads SQLite data and an unsaved row added with + disappears.
+    table_state_key=f'bd_table_data_{code}'
+    editor_key=f'bd_editor_{code}'
+    if table_state_key not in st.session_state:
+        existing=q('select id,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark from breakdown_activity_log where machine_code=? order by id',(code,))
+        if len(existing)==0:
+            existing=pd.DataFrame([{ 'id':None,'job_id':new_id('BM'),'activity_dt':datetime.now().isoformat(timespec='minutes'),'failure':'','cause':'','action':'','spares':'','downtime_hr':0.0,'status':'OPEN','remark':'' }])
+        st.session_state[table_state_key]=existing.copy()
+    edited=st.data_editor(st.session_state[table_state_key],num_rows='dynamic',use_container_width=True,hide_index=True,key=editor_key,column_config={
         'id':st.column_config.NumberColumn('ID',disabled=True),
         'job_id':st.column_config.TextColumn('Job / WO ID'),
         'activity_dt':st.column_config.TextColumn('Date / Time'),
@@ -198,6 +204,8 @@ with T[5]:
         'status':st.column_config.SelectboxColumn('Status',options=['OPEN','IN PROGRESS','CLOSED']),
         'remark':st.column_config.TextColumn('Remark',width='large')
     })
+    # Capture added/edited rows after every rerun so the + row stays open.
+    st.session_state[table_state_key]=edited.copy()
     csave,cinfo=st.columns([1,3])
     if csave.button('💾 Save Breakdown History',type='primary',use_container_width=True):
         cleaned=edited.copy(); cleaned=cleaned[cleaned[['failure','action','cause','spares','remark']].fillna('').astype(str).apply(lambda r: ''.join(r).strip()!='',axis=1)]
@@ -206,6 +214,9 @@ with T[5]:
             jid=str(r.get('job_id') or new_id('BM')); adt=str(r.get('activity_dt') or datetime.now().isoformat(timespec='minutes')); failure=str(r.get('failure') or ''); cause=str(r.get('cause') or ''); action=str(r.get('action') or ''); spares=str(r.get('spares') or ''); downtime=float(r.get('downtime_hr') or 0.0); status=str(r.get('status') or 'OPEN'); remark=str(r.get('remark') or '')
             execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,adt,failure,cause,action,spares,downtime,status,remark))
         st.success(f'{len(cleaned)} breakdown activity row(s) saved for {mr.machine_name}.')
+        # Reload the just-saved database rows on the next run.
+        st.session_state.pop(table_state_key,None)
+        st.session_state.pop(editor_key,None)
         st.rerun()
     cinfo.info('नई row जोड़ने के लिए table के नीचे + icon/use dynamic row करें; पुरानी rows भी edit की जा सकती हैं।')
 
