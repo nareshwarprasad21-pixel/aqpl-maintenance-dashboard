@@ -68,6 +68,16 @@ def conn():
     '''); c.commit(); return c
 C=conn()
 
+def _value_or(value:Any,default):
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+    except (TypeError,ValueError):
+        pass
+    return default if str(value).strip()=='' else value
+
 def _clean_value(value:Any):
     if value is None or (isinstance(value,float) and pd.isna(value)):
         return None
@@ -338,7 +348,7 @@ with T[5]:
         cleaned=edited.copy(); cleaned=cleaned[cleaned[['failure','action','cause','spares','remark']].fillna('').astype(str).apply(lambda r: ''.join(r).strip()!='',axis=1)]
         execsql('delete from breakdown_activity_log where machine_code=?',(code,))
         for _,r in cleaned.iterrows():
-            jid=str(r.get('job_id') or new_id('BM')); adt=str(r.get('activity_dt') or datetime.now().isoformat(timespec='minutes')); failure=str(r.get('failure') or ''); cause=str(r.get('cause') or ''); action=str(r.get('action') or ''); spares=str(r.get('spares') or ''); downtime=float(r.get('downtime_hr') or 0.0); status=str(r.get('status') or 'OPEN'); remark=str(r.get('remark') or '')
+            jid=str(_value_or(r.get('job_id'),new_id('BM'))); adt=str(_value_or(r.get('activity_dt'),datetime.now().isoformat(timespec='minutes'))); failure=str(_value_or(r.get('failure'),'')); cause=str(_value_or(r.get('cause'),'')); action=str(_value_or(r.get('action'),'')); spares=str(_value_or(r.get('spares'),'')); downtime=float(_value_or(r.get('downtime_hr'),0.0)); status=str(_value_or(r.get('status'),'OPEN')); remark=str(_value_or(r.get('remark'),''))
             execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,adt,failure,cause,action,spares,downtime,status,remark))
         st.success(f'{len(cleaned)} breakdown activity row(s) saved for {mr.machine_name}.')
         # Reload the just-saved database rows on the next run.
