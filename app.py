@@ -572,16 +572,26 @@ with T[3]:
 
 with T[4]:
     st.subheader('Machine History Card — PM/BM'); code=st.selectbox('Machine',MACH.machine_code.tolist(),key='histcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}'); activity_type=st.radio('Maintenance Activity Type',['PM','BM'],horizontal=True,key='hist_activity_type'); st.caption('Select PM for Preventive Maintenance or BM for Breakdown Maintenance. You can add a new history entry below.'); st.markdown('### ➕ Fill / Add Maintenance History'); default_jid=new_id(activity_type)
-    with st.form('manual_history_form',clear_on_submit=True):
+    # Keep the form values on Calculate/Save reruns. A machine/activity-specific
+    # form key prevents one machine's draft from appearing under another one.
+    with st.form(f'manual_history_form_{code}_{activity_type}',clear_on_submit=False):
         c1,c2,c3=st.columns([1.4,1,1]); jid=c1.text_input('Job / Work Order ID',value=default_jid); start_date=c2.date_input('Start Date',value=TODAY); start_time=c3.time_input('Start Time',value=datetime.now().time().replace(second=0,microsecond=0)); problem=st.text_area('Problem / Maintenance Activity',placeholder='PM activity performed or breakdown/problem details'); action=st.text_area('Action Taken / Work Done',placeholder='Inspection, repair, replacement, adjustment, lubrication, etc.'); r1,r2=st.columns(2); restart_date=r1.date_input('Restart / Completion Date',value=TODAY); restart_time=r2.time_input('Restart / Completion Time',value=datetime.now().time().replace(second=0,microsecond=0)); remark=st.text_area('Remark / Observation')
-        if activity_type=='BM': b1,b2=st.columns(2); cause=b1.text_input('Breakdown Cause / Suspected Cause'); downtime=b2.number_input('Downtime Hours',min_value=0.0,step=0.25); spares=st.text_input('Spares / Material Used')
-        else:cause=''; downtime=0.0; spares=''
-        save_history=st.form_submit_button(f'Save {activity_type} History',type='primary')
+        start_dt_value=datetime.combine(start_date,start_time); restart_dt_value=datetime.combine(restart_date,restart_time); duration_seconds=(restart_dt_value-start_dt_value).total_seconds(); valid_history_time=duration_seconds>=0; downtime=round(max(duration_seconds,0)/3600,2); total_history_minutes=int(max(duration_seconds,0)//60); history_hours,history_minutes=divmod(total_history_minutes,60)
+        if activity_type=='BM':
+            b1,b2=st.columns(2); cause=b1.text_input('Breakdown Cause / Suspected Cause'); b2.text_input('Calculated Downtime',value=f'{history_hours} hour(s) {history_minutes} minute(s) ({downtime:.2f} hours)',disabled=True); spares=st.text_input('Spares / Material Used')
+        else:cause=''; spares=''
+        fb1,fb2=st.columns(2)
+        calculate_history=fb1.form_submit_button('⏱️ Calculate Downtime',use_container_width=True)
+        save_history=fb2.form_submit_button(f'Save {activity_type} History',type='primary',use_container_width=True)
+    if calculate_history:
+        if valid_history_time:st.success(f'Total time: {history_hours} hour(s) {history_minutes} minute(s) ({downtime:.2f} hours). आपकी भरी हुई entries सुरक्षित हैं।')
+        else:st.error('Restart / Completion Date-Time, Start Date-Time से पहले नहीं हो सकती। Entries सुरक्षित हैं; time सही करें।')
     if save_history:
-        if not problem.strip():st.error('Problem / Maintenance Activity field is required.')
+        if not valid_history_time:st.error('Restart / Completion Date-Time, Start Date-Time से पहले नहीं हो सकती।')
+        elif not problem.strip():st.error('Problem / Maintenance Activity field is required.')
         elif not action.strip():st.error('Action Taken / Work Done field is required.')
         else:
-            start_dt=datetime.combine(start_date,start_time).isoformat(timespec='minutes'); restart_dt=datetime.combine(restart_date,restart_time).isoformat(timespec='minutes'); execsql('insert or replace into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,activity_type,code,mr.machine_name,mr.location,start_dt,problem,'CLOSED',0,0,restart_dt)); execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,activity_type,start_dt,problem,action,restart_dt,remark))
+            start_dt=start_dt_value.isoformat(timespec='minutes'); restart_dt=restart_dt_value.isoformat(timespec='minutes'); execsql('insert or replace into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,activity_type,code,mr.machine_name,mr.location,start_dt,problem,'CLOSED',0,0,restart_dt)); execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,activity_type,start_dt,problem,action,restart_dt,remark))
             if activity_type=='BM':
                 execsql('insert into breakdowns(job_id,machine_code,failure,cause,downtime_hr,spares,action,status) values(?,?,?,?,?,?,?,?)',(jid,code,problem,cause,downtime,spares,action,'CLOSED')); execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,start_dt,problem,cause,action,spares,downtime,'CLOSED',remark)); existing=q('select id from whywhy where job_id=?',(jid,));
                 if not len(existing):execsql('insert into whywhy(job_id,machine_code,problem,status) values(?,?,?,?)',(jid,code,problem,'DRAFT'))
