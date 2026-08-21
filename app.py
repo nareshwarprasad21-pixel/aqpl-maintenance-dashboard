@@ -322,6 +322,56 @@ def build_pm_checksheet_pdf(job,checks,machine):
     doc.build(story,onFirstPage=footer,onLaterPages=footer)
     return buffer.getvalue()
 
+def build_breakdown_report_pdf(job,breakdown,machine):
+    """Return a printable A4 breakdown maintenance report."""
+    def val(source,key,default=''):
+        try:value=source.get(key,default)
+        except AttributeError:value=default
+        if value is None:return default
+        try:
+            if pd.isna(value):return default
+        except (TypeError,ValueError):pass
+        return str(value)
+
+    regular='Helvetica'; bold='Helvetica-Bold'
+    font_paths=[
+        ('/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf','/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'),
+        ('/usr/share/fonts/dejavu/DejaVuSans.ttf','/usr/share/fonts/dejavu/DejaVuSans-Bold.ttf')]
+    for regular_path,bold_path in font_paths:
+        if os.path.exists(regular_path) and os.path.exists(bold_path):
+            try:
+                pdfmetrics.registerFont(TTFont('AQPLBDSans',regular_path)); pdfmetrics.registerFont(TTFont('AQPLBDSansBold',bold_path))
+                regular='AQPLBDSans'; bold='AQPLBDSansBold'; break
+            except Exception:pass
+
+    downtime=float(val(breakdown,'downtime_hr','0') or 0)
+    total_minutes=round(downtime*60); duration_hours,duration_minutes=divmod(total_minutes,60)
+    buffer=BytesIO(); doc=SimpleDocTemplate(buffer,pagesize=A4,rightMargin=14*mm,leftMargin=14*mm,topMargin=15*mm,bottomMargin=16*mm,title=f"Breakdown Report - {val(breakdown,'job_id')}",author='Asian Quartz Pvt Ltd')
+    styles=getSampleStyleSheet()
+    title_style=ParagraphStyle('BDTitle',parent=styles['Title'],fontName=bold,fontSize=15,leading=18,textColor=colors.HexColor('#10213b'),alignment=TA_CENTER,spaceAfter=2*mm)
+    subtitle_style=ParagraphStyle('BDSubtitle',parent=styles['Heading2'],fontName=bold,fontSize=11,leading=14,textColor=colors.HexColor('#b91c1c'),alignment=TA_CENTER,spaceAfter=5*mm)
+    body=ParagraphStyle('BDBody',parent=styles['BodyText'],fontName=regular,fontSize=8.5,leading=11,textColor=colors.HexColor('#111827'))
+    body_bold=ParagraphStyle('BDBold',parent=body,fontName=bold)
+    story=[Paragraph('ASIAN QUARTZ PVT LTD',title_style),Paragraph('BREAKDOWN MAINTENANCE REPORT',subtitle_style)]
+    rows=[
+        ['Machine Name',val(machine,'machine_name'),'Machine Code',val(machine,'machine_code')],
+        ['Location',val(machine,'location'),'Make / Model',val(machine,'make_model')],
+        ['Job / WO ID',val(breakdown,'job_id'),'Status',val(breakdown,'status')],
+        ['Breakdown Start',val(job,'opened_at',val(breakdown,'activity_dt')),'Breakdown End',val(job,'closed_at')],
+        ['Total Breakdown Time',f'{duration_hours} hour(s) {duration_minutes} minute(s)', 'Downtime Hours',f'{downtime:.2f}']]
+    meta=[]
+    for row in rows:
+        meta.append([Paragraph(f'<b>{escape(row[0])}</b>',body_bold),Paragraph(escape(row[1]),body),Paragraph(f'<b>{escape(row[2])}</b>',body_bold),Paragraph(escape(row[3]),body)])
+    table=Table(meta,colWidths=[34*mm,57*mm,34*mm,57*mm]); table.setStyle(TableStyle([('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#94a3b8')),('BACKGROUND',(0,0),(0,-1),colors.HexColor('#e2e8f0')),('BACKGROUND',(2,0),(2,-1),colors.HexColor('#e2e8f0')),('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),5),('RIGHTPADDING',(0,0),(-1,-1),5),('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)])); story.extend([table,Spacer(1,6*mm)])
+    details=[('Breakdown / Problem Details',val(breakdown,'failure',val(job,'problem'))),('Immediate / Root Cause',val(breakdown,'cause')),('Spares / Material Used',val(breakdown,'spares')),('Action Taken / Work Done',val(breakdown,'action')),('Remarks',val(breakdown,'remark'))]
+    for label,value in details:
+        story.extend([Paragraph(escape(label),body_bold),Table([[Paragraph(escape(value or '-'),body)]],colWidths=[182*mm],style=TableStyle([('BOX',(0,0),(-1,-1),0.5,colors.HexColor('#94a3b8')),('BACKGROUND',(0,0),(-1,-1),colors.HexColor('#f8fafc')),('LEFTPADDING',(0,0),(-1,-1),6),('RIGHTPADDING',(0,0),(-1,-1),6),('TOPPADDING',(0,0),(-1,-1),6),('BOTTOMPADDING',(0,0),(-1,-1),6)])),Spacer(1,4*mm)])
+    signatures=[[Paragraph('<b>Prepared By</b>',body_bold),Paragraph('<b>Checked By</b>',body_bold),Paragraph('<b>Approved By</b>',body_bold)],[Paragraph('<br/><br/>Name &amp; Sign: _______________',body),Paragraph('<br/><br/>Maintenance Engineer: ________',body),Paragraph('<br/><br/>HOD / Plant Head: ___________',body)]]
+    sign_table=Table(signatures,colWidths=[60.7*mm]*3); sign_table.setStyle(TableStyle([('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#64748b')),('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e2e8f0')),('VALIGN',(0,0),(-1,-1),'TOP'),('LEFTPADDING',(0,0),(-1,-1),5),('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)])); story.append(sign_table)
+    def footer(canvas,document):
+        canvas.saveState(); canvas.setFont(regular,7); canvas.setFillColor(colors.HexColor('#64748b')); canvas.drawString(14*mm,8*mm,f"Document: AQPL/MAINT/BM | Job: {val(breakdown,'job_id')}"); canvas.drawRightString(A4[0]-14*mm,8*mm,f"Page {document.page}"); canvas.restoreState()
+    doc.build(story,onFirstPage=footer,onLaterPages=footer); return buffer.getvalue()
+
 def new_id(kind): return f"AQPL-{kind}-{datetime.now():%Y%m%d-%H%M%S}"
 def machine_row(code): return MACH[MACH.machine_code==code].iloc[0]
 
@@ -564,6 +614,28 @@ with T[5]:
         st.session_state.pop(editor_key,None)
         st.rerun()
     cinfo.info('नई row जोड़ने के लिए table के नीचे + icon/use dynamic row करें; पुरानी rows भी edit की जा सकती हैं।')
+
+    st.markdown('### 📄 Download Breakdown Report')
+    saved_breakdowns=q('select * from breakdowns where machine_code=? order by id desc',(code,))
+    if saved_breakdowns.empty:
+        st.info('इस machine की saved breakdown report अभी उपलब्ध नहीं है।')
+    else:
+        report_options=[]
+        for _,bd_row in saved_breakdowns.iterrows():
+            report_options.append(f"{bd_row.job_id} | {str(_value_or(bd_row.failure,'Breakdown'))[:55]}")
+        selected_report=st.selectbox('Select saved Breakdown Job / Work Order',report_options,key=f'breakdown_pdf_job_{code}')
+        selected_job_id=selected_report.split(' | ')[0]
+        selected_breakdown=saved_breakdowns[saved_breakdowns.job_id==selected_job_id].iloc[0].to_dict()
+        job_rows=q('select * from jobs where job_id=?',(selected_job_id,))
+        selected_job=job_rows.iloc[0].to_dict() if len(job_rows) else {'job_id':selected_job_id,'opened_at':'','closed_at':'','status':selected_breakdown.get('status','')}
+        activity_rows=q('select * from breakdown_activity_log where job_id=? order by id desc',(selected_job_id,))
+        if len(activity_rows):
+            activity=activity_rows.iloc[0].to_dict()
+            selected_breakdown['activity_dt']=activity.get('activity_dt','')
+            selected_breakdown['remark']=activity.get('remark','')
+        breakdown_pdf=build_breakdown_report_pdf(selected_job,selected_breakdown,mr)
+        st.download_button('⬇️ Download Breakdown Report PDF',data=breakdown_pdf,file_name=f"Breakdown_Report_{selected_job_id.replace('/','-')}.pdf",mime='application/pdf',key=f'breakdown_pdf_download_{selected_job_id}',type='primary',on_click='ignore')
+        st.caption('PDF में machine details, start/end time, total downtime, problem, cause, spares, action, status और signatures शामिल हैं।')
 
 with T[6]:
     st.subheader('Work Orders & Safety Permits'); st.markdown('**Open / Recent Work Orders**'); st.dataframe(q('select * from jobs order by opened_at desc limit 100'),use_container_width=True,hide_index=True); st.markdown('**Height / Hot Work Permits**'); permits=q('select * from permits order by id desc'); st.dataframe(permits,use_container_width=True,hide_index=True)
