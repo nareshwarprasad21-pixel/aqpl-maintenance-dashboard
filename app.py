@@ -42,9 +42,11 @@ def load_static():
     p=pd.read_csv(os.path.join(DATA,'pm_plan.csv')); p['scheduled_date']=pd.to_datetime(p['scheduled_date']).dt.date
     with open(os.path.join(DATA,'checklists.json'),encoding='utf-8') as f:c=json.load(f)
     return m,p,c
-MACH,PLAN,CHECKS=load_static()
+STATIC_MACH,PLAN,CHECKS=load_static()
+MACH=STATIC_MACH.copy()
 
 TABLE_COLUMNS={
+    'equipment_master':['machine_code','machine_name','make_model','capacity','location','is_active','created_at','updated_at'],
     'jobs':['job_id','job_type','machine_code','machine_name','location','opened_at','problem','status','hot_work','height_work','closed_at'],
     'pm_checks':['id','job_id','machine_code','check_point','result','action','remark','created_at'],
     'history':['id','job_id','machine_code','maintenance_type','start_dt','problem','action_taken','restart_dt','remark'],
@@ -69,6 +71,7 @@ SB=create_client(SUPABASE_URL,SUPABASE_SECRET_KEY) if USE_SUPABASE else None
 def conn():
     c=sqlite3.connect(DB,check_same_thread=False)
     c.executescript('''
+    CREATE TABLE IF NOT EXISTS equipment_master(machine_code TEXT PRIMARY KEY,machine_name TEXT NOT NULL,make_model TEXT DEFAULT '',capacity TEXT DEFAULT '',location TEXT DEFAULT '',is_active INTEGER DEFAULT 1,created_at TEXT,updated_at TEXT);
     CREATE TABLE IF NOT EXISTS jobs(job_id TEXT PRIMARY KEY,job_type TEXT,machine_code TEXT,machine_name TEXT,location TEXT,opened_at TEXT,problem TEXT,status TEXT,hot_work INTEGER,height_work INTEGER,closed_at TEXT);
     CREATE TABLE IF NOT EXISTS pm_checks(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT,machine_code TEXT,check_point TEXT,result TEXT,action TEXT,remark TEXT,created_at TEXT);
     CREATE TABLE IF NOT EXISTS history(id INTEGER PRIMARY KEY AUTOINCREMENT,job_id TEXT,machine_code TEXT,maintenance_type TEXT,start_dt TEXT,problem TEXT,action_taken TEXT,restart_dt TEXT,remark TEXT);
@@ -190,6 +193,22 @@ if USE_SUPABASE:
         st.sidebar.error(f'Supabase connection error: {exc}')
 else:
     st.sidebar.warning('Local database active · add Supabase secrets')
+
+def load_equipment_master():
+    """Load the editable master; seed the local fallback from the bundled CSV."""
+    rows=q('select machine_code,machine_name,make_model,capacity,location,is_active from equipment_master order by machine_name')
+    if rows.empty and not USE_SUPABASE:
+        now=datetime.now().isoformat(timespec='seconds')
+        for _,machine in STATIC_MACH.iterrows():
+            execsql('insert or replace into equipment_master(machine_code,machine_name,make_model,capacity,location,is_active,created_at,updated_at) values(?,?,?,?,?,?,?,?)',(machine.machine_code,machine.machine_name,machine.make_model,machine.capacity,machine.location,1,now,now))
+        rows=q('select machine_code,machine_name,make_model,capacity,location,is_active from equipment_master order by machine_name')
+    if rows.empty:
+        fallback=STATIC_MACH.copy(); fallback['is_active']=True; return fallback
+    rows['is_active']=rows['is_active'].fillna(True).astype(bool)
+    return rows
+
+EQUIPMENT=load_equipment_master()
+MACH=EQUIPMENT[EQUIPMENT.is_active].drop(columns=['is_active']).reset_index(drop=True)
 
 def build_pm_checksheet_pdf(job,checks,machine):
     """Return a professional A4 PM checklist as PDF bytes."""
@@ -696,7 +715,35 @@ with T[7]:
             why1=st.text_area('Why 1?',value=str(r.why1 or '')); why2=st.text_area('Why 2?',value=str(r.why2 or '')); why3=st.text_area('Why 3?',value=str(r.why3 or '')); why4=st.text_area('Why 4?',value=str(r.why4 or '')); why5=st.text_area('Why 5?',value=str(r.why5 or '')); root=st.text_area('Root Cause',value=str(r.root_cause or '')); corr=st.text_area('Corrective Action',value=str(r.corrective or '')); prev=st.text_area('Preventive Action',value=str(r.preventive or '')); owner=st.text_input('Responsible Person',value=str(r.owner or '')); target=st.date_input('Target Date',value=TODAY); eff=st.text_area('Effectiveness Check',value=str(r.effectiveness or '')); status=st.selectbox('RCA Status',['DRAFT','ACTION OPEN','CLOSED']); save=st.form_submit_button('Save Why-Why Analysis',type='primary')
         if save:execsql('update whywhy set why1=?,why2=?,why3=?,why4=?,why5=?,root_cause=?,corrective=?,preventive=?,owner=?,target_date=?,effectiveness=?,status=? where job_id=?',(why1,why2,why3,why4,why5,root,corr,prev,owner,str(target),eff,status,jid));st.success('Why-Why analysis saved and linked to BM job.')
 
-with T[8]: st.subheader('Machine / Equipment Master'); st.dataframe(MACH,use_container_width=True,hide_index=True); st.caption('Machine Code is the primary link across PM, BM, History, Permit and Why-Why records.')
+with T[8]:
+    st.subheader('Machine / Equipment Master')
+    st.caption('Equipment Master अब Supabase में permanently save होता है। Active machines ही PM, Breakdown और History dropdowns में दिखाई देंगी।')
+    master_view=EQUIPMENT.rename(columns={'machine_name':'Machine Name','machine_code':'Machine Code','make_model':'Make / Model','capacity':'Capacity','location':'Location','is_active':'Active'})
+    st.dataframe(master_view,use_container_width=True,hide_index=True)
+    master_mode=st.radio('Equipment Master Action',['➕ Add New Machine','✏️ Edit / Activate / Inactivate'],horizontal=True,key='equipment_master_action')
+    if master_mode=='➕ Add New Machine':
+        with st.form('add_equipment_master_form',clear_on_submit=True):
+            a1,a2=st.columns(2); new_code=a1.text_input('Machine Code *',placeholder='Example: AQPL/PUMP-01'); new_name=a2.text_input('Machine Name *')
+            a3,a4,a5=st.columns(3); new_make=a3.text_input('Make / Model'); new_capacity=a4.text_input('Capacity'); new_location=a5.text_input('Location *')
+            new_active=st.checkbox('Active',value=True); add_machine=st.form_submit_button('💾 Add Machine',type='primary')
+        if add_machine:
+            clean_code=new_code.strip().upper(); clean_name=new_name.strip(); clean_location=new_location.strip()
+            if not clean_code or not clean_name or not clean_location:st.error('Machine Code, Machine Name और Location required हैं।')
+            elif clean_code in EQUIPMENT.machine_code.astype(str).tolist():st.error(f'{clean_code} पहले से Equipment Master में मौजूद है। Edit option उपयोग करें।')
+            else:
+                now=datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(timespec='seconds'); execsql('insert into equipment_master(machine_code,machine_name,make_model,capacity,location,is_active,created_at,updated_at) values(?,?,?,?,?,?,?,?)',(clean_code,clean_name,new_make.strip(),new_capacity.strip(),clean_location,bool(new_active),now,now)); st.success(f'{clean_name} ({clean_code}) Equipment Master में add हो गई।'); st.rerun()
+    else:
+        edit_code=st.selectbox('Select Machine Code to edit',EQUIPMENT.machine_code.tolist(),key='equipment_master_edit_code')
+        edit_row=EQUIPMENT[EQUIPMENT.machine_code==edit_code].iloc[0]
+        with st.form(f'edit_equipment_master_form_{edit_code}'):
+            e1,e2=st.columns(2); e1.text_input('Machine Code',value=edit_code,disabled=True); edit_name=e2.text_input('Machine Name *',value=str(edit_row.machine_name))
+            e3,e4,e5=st.columns(3); edit_make=e3.text_input('Make / Model',value=str(edit_row.make_model)); edit_capacity=e4.text_input('Capacity',value=str(edit_row.capacity)); edit_location=e5.text_input('Location *',value=str(edit_row.location))
+            edit_active=st.checkbox('Active',value=bool(edit_row.is_active)); update_machine=st.form_submit_button('💾 Save Machine Changes',type='primary')
+        if update_machine:
+            if not edit_name.strip() or not edit_location.strip():st.error('Machine Name और Location required हैं।')
+            else:
+                now=datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(timespec='seconds'); execsql('update equipment_master set machine_name=?,make_model=?,capacity=?,location=?,is_active=?,updated_at=? where machine_code=?',(edit_name.strip(),edit_make.strip(),edit_capacity.strip(),edit_location.strip(),bool(edit_active),now,edit_code)); st.success(f'{edit_code} successfully update हो गई।'); st.rerun()
+    st.info('Machine Code primary link है, इसलिए existing code edit नहीं किया जा सकता। Machine हटाने के बजाय Active checkbox off करें; उसकी पुरानी history सुरक्षित रहेगी।')
 with T[9]:
     st.subheader('Machine → PM Checklist Mapping'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='mapcode'); mr=machine_row(code); current=checklist_for(code); opts=['NOT CONFIGURED']+list(CHECKS.keys()); idx=opts.index(current) if current in opts else 0; sel=st.selectbox('Checklist Template',opts,index=idx)
     if st.button('Save Mapping',type='primary'):
