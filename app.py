@@ -19,6 +19,7 @@ try:
 except ImportError:
     create_client=None
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 st.set_page_config(page_title='AQPL Maintenance Management', page_icon='🛠️', layout='wide')
 BASE=os.path.dirname(__file__); DATA=os.path.join(BASE,'data'); DB=os.path.join(DATA,'maintenance.db')
@@ -372,7 +373,21 @@ def build_breakdown_report_pdf(job,breakdown,machine):
         canvas.saveState(); canvas.setFont(regular,7); canvas.setFillColor(colors.HexColor('#64748b')); canvas.drawString(14*mm,8*mm,f"Document: AQPL/MAINT/BM | Job: {val(breakdown,'job_id')}"); canvas.drawRightString(A4[0]-14*mm,8*mm,f"Page {document.page}"); canvas.restoreState()
     doc.build(story,onFirstPage=footer,onLaterPages=footer); return buffer.getvalue()
 
-def new_id(kind): return f"AQPL-{kind}-{datetime.now():%Y%m%d-%H%M%S}"
+def new_id(kind):
+    """Generate readable IST-based IDs; BM uses a daily running sequence."""
+    now_ist=datetime.now(ZoneInfo('Asia/Kolkata'))
+    if kind=='BM':
+        prefix=f"AQPL-BM-{now_ist:%Y%m%d}"
+        existing=q("select job_id from jobs where job_type='BM'")
+        sequences=[]
+        if len(existing):
+            for job_id in existing.job_id.fillna('').astype(str):
+                # Only the new three-digit suffix participates in sequencing;
+                # legacy HHMMSS IDs such as -073804 must be ignored.
+                match=re.fullmatch(rf'{re.escape(prefix)}-(\d{{3}})',job_id)
+                if match:sequences.append(int(match.group(1)))
+        return f"{prefix}-{max(sequences,default=0)+1:03d}"
+    return f"AQPL-{kind}-{now_ist:%Y%m%d-%H%M%S}"
 def machine_row(code): return MACH[MACH.machine_code==code].iloc[0]
 
 def suggest_sheet(name):
