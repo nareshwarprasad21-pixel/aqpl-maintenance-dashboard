@@ -597,7 +597,24 @@ with T[4]:
                 if not len(existing):execsql('insert into whywhy(job_id,machine_code,problem,status) values(?,?,?,?)',(jid,code,problem,'DRAFT'))
                 st.success(f'BM history saved for {mr.machine_name}. Breakdown History and Why-Why draft also linked automatically. Job ID: {jid}')
             else:st.success(f'PM history saved for {mr.machine_name}. Job ID: {jid}')
-    st.markdown('### 📚 Saved History'); history_view=q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? and maintenance_type=? order by id desc',(code,activity_type)); st.dataframe(history_view,use_container_width=True,hide_index=True)
+    st.markdown('### 📚 Saved History')
+    delete_flash_key=f'history_delete_flash_{code}_{activity_type}'
+    if delete_flash_key in st.session_state:
+        st.success(st.session_state.pop(delete_flash_key))
+    history_view=q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? and maintenance_type=? order by id desc',(code,activity_type)); st.dataframe(history_view,use_container_width=True,hide_index=True)
+    if len(history_view):
+        st.markdown('#### 🗑️ Delete Saved Entry')
+        delete_options=[f"{r.job_id} | {str(_value_or(r.problem,'Maintenance entry'))[:60]}" for _,r in history_view.iterrows()]
+        selected_delete=st.selectbox('Select Job ID to delete',delete_options,key=f'history_delete_pick_{code}_{activity_type}')
+        delete_job_id=selected_delete.split(' | ')[0]
+        st.warning(f'{delete_job_id} delete करने पर इससे linked Machine History, Breakdown History, Why-Why, Work Order, Permit और report records भी हटेंगे। यह action वापस नहीं होगा।')
+        confirm_delete=st.checkbox(f'I confirm: delete {delete_job_id}',key=f'history_delete_confirm_{code}_{activity_type}_{delete_job_id}')
+        if st.button('🗑️ Delete Selected Entry',type='secondary',disabled=not confirm_delete,key=f'history_delete_button_{code}_{activity_type}'):
+            # Delete child/link records first, then the parent work order.
+            for linked_table in ['pm_checks','permits','whywhy','breakdown_activity_log','breakdowns','history','jobs']:
+                execsql(f'delete from {linked_table} where job_id=?',(delete_job_id,))
+            st.session_state[delete_flash_key]=f'{delete_job_id} और उसके linked records successfully delete हो गए। बाकी entries सुरक्षित हैं।'
+            st.rerun()
 
 with T[5]:
     st.subheader('Breakdown History Card — Editable Activity Log')
