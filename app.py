@@ -354,7 +354,22 @@ with T[1]:
     c1,c2,c3,c4=st.columns([1.05,1.05,1.05,1.35])
     loc=c1.selectbox('Location',['ALL']+sorted(MACH.location.unique().tolist()))
     days=c2.selectbox('Window',['Selected date','All','Due/Overdue','Next 7 days','Next 30 days'])
-    selected_date=c3.date_input('📅 Schedule Date',value=TODAY,help='Calendar icon पर click करके date चुनें। उस date की scheduled machines नीचे दिखाई देंगी।')
+    plan_start=min(PLAN.scheduled_date)
+    plan_end=max(PLAN.scheduled_date)
+    if 'pm_schedule_date' not in st.session_state:
+        st.session_state['pm_schedule_date']=TODAY
+    selected_date=c3.date_input(
+        '📅 Schedule Date',
+        min_value=plan_start,
+        max_value=plan_end,
+        key='pm_schedule_date',
+        help='Calendar icon पर click करके past या future schedule date चुनें।'
+    )
+    # Keep the PM form on the same selected date so a back-dated checklist is
+    # saved in history with the chosen maintenance date, not today's date.
+    if st.session_state.get('pm_plan_last_synced_date') != selected_date:
+        st.session_state['pm_maintenance_date']=selected_date
+        st.session_state['pm_plan_last_synced_date']=selected_date
     search=c4.text_input('Machine / Code search')
     x=PLAN.merge(MACH[['machine_code','location','make_model']],on='machine_code',how='left')
     if loc!='ALL': x=x[x.location==loc]
@@ -376,7 +391,7 @@ with T[1]:
         else:
             st.warning('इस selected date पर कोई PM activity scheduled नहीं है। दूसरी date चुनें।')
     st.dataframe(x,use_container_width=True,hide_index=True,column_config={'scheduled_date':st.column_config.DateColumn('Scheduled Date',format='DD-MM-YYYY')})
-    st.caption('Calendar से date चुनें → उस date की machines filter होंगी → machine select करें → PM Check Sheet tab में वही machine automatically pre-selected होगी।')
+    st.caption(f'Available plan dates: {plan_start:%d-%m-%Y} से {plan_end:%d-%m-%Y}। Calendar से past date चुनें → machine select करें → PM Check Sheet tab में machine और Maintenance Date automatically set होंगे।')
 
 with T[2]:
     st.subheader('Preventive Maintenance Check Sheet')
