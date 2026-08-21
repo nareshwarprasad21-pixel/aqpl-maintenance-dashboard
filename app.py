@@ -469,13 +469,41 @@ with T[2]:
 
 with T[3]:
     st.subheader('Breakdown Maintenance — Start Linked BM Workflow'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='bmcode'); mr=machine_row(code); st.info(f"{mr.machine_name} | {mr.location} | {mr.make_model}")
-    with st.form('bmstart'):
-        problem=st.text_area('Breakdown / Problem Details'); cause=st.text_input('Immediate suspected cause (if known)'); spares=st.text_input('Spares / material used or expected'); hot=st.checkbox('Hot work required'); height=st.checkbox('Height work required'); downtime=st.number_input('Downtime hours',min_value=0.0,step=0.25); action=st.text_area('Action Taken / Planned'); submit=st.form_submit_button('Create BM Work Order & Linked Records',type='primary')
+    problem=st.text_area('Breakdown / Problem Details')
+    cause=st.text_input('Immediate suspected cause (if known)')
+    spares=st.text_input('Spares / material used or expected')
+    st.markdown('#### Breakdown Timing')
+    current_minute=datetime.now().time().replace(second=0,microsecond=0)
+    bt1,bt2,bt3,bt4=st.columns(4)
+    breakdown_start_date=bt1.date_input('Breakdown Start Date',value=TODAY,key='bm_start_date')
+    breakdown_start_time=bt2.time_input('Breakdown Start Time',value=current_minute,key='bm_start_time')
+    breakdown_end_date=bt3.date_input('Breakdown End Date',value=TODAY,key='bm_end_date')
+    breakdown_end_time=bt4.time_input('Breakdown End Time',value=current_minute,key='bm_end_time')
+    breakdown_start_dt=datetime.combine(breakdown_start_date,breakdown_start_time)
+    breakdown_end_dt=datetime.combine(breakdown_end_date,breakdown_end_time)
+    duration_seconds=(breakdown_end_dt-breakdown_start_dt).total_seconds()
+    valid_breakdown_time=duration_seconds>=0
+    downtime=round(max(duration_seconds,0)/3600,2)
+    total_minutes=int(max(duration_seconds,0)//60)
+    duration_hours,duration_minutes=divmod(total_minutes,60)
+    if valid_breakdown_time:
+        st.success(f'⏱️ Total Breakdown Time: {duration_hours} hour(s) {duration_minutes} minute(s) ({downtime:.2f} hours)')
+    else:
+        st.error('Breakdown End Date/Time, Start Date/Time से पहले नहीं हो सकती।')
+    hot=st.checkbox('Hot work required')
+    height=st.checkbox('Height work required')
+    action=st.text_area('Action Taken / Planned')
+    submit=st.button('Create BM Work Order & Linked Records',type='primary',key='bm_submit')
     if submit:
-        jid=new_id('BM'); now=datetime.now().isoformat(timespec='minutes'); execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'BM',code,mr.machine_name,mr.location,now,problem,'OPEN',int(hot),int(height),None)); execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,remark) values(?,?,?,?,?,?,?)',(jid,code,'BM',now,problem,action,'BM open')); execsql('insert into breakdowns(job_id,machine_code,failure,cause,downtime_hr,spares,action,status) values(?,?,?,?,?,?,?,?)',(jid,code,problem,cause,downtime,spares,action,'OPEN')); execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,now,problem,cause,action,spares,downtime,'OPEN','')); execsql('insert into whywhy(job_id,machine_code,problem,status) values(?,?,?,?)',(jid,code,problem,'DRAFT'))
-        if hot:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,problem,'DRAFT'))
-        if height:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,problem,'DRAFT'))
-        st.success(f'{jid} created → Machine History + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
+        if not valid_breakdown_time:
+            st.error('Correct Breakdown Start and End date/time before saving.')
+        elif not problem.strip():
+            st.error('Breakdown / Problem Details field is required.')
+        else:
+            jid=new_id('BM'); start_iso=breakdown_start_dt.isoformat(timespec='minutes'); end_iso=breakdown_end_dt.isoformat(timespec='minutes'); execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'BM',code,mr.machine_name,mr.location,start_iso,problem,'CLOSED',int(hot),int(height),end_iso)); execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,'BM',start_iso,problem,action,end_iso,f'BM completed; Total downtime: {duration_hours}h {duration_minutes}m')); execsql('insert into breakdowns(job_id,machine_code,failure,cause,downtime_hr,spares,action,status) values(?,?,?,?,?,?,?,?)',(jid,code,problem,cause,downtime,spares,action,'CLOSED')); execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,start_iso,problem,cause,action,spares,downtime,'CLOSED',f'Completed: {end_iso}; Total downtime: {duration_hours}h {duration_minutes}m')); execsql('insert into whywhy(job_id,machine_code,problem,status) values(?,?,?,?)',(jid,code,problem,'DRAFT'))
+            if hot:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,problem,'DRAFT'))
+            if height:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,problem,'DRAFT'))
+            st.success(f'{jid} saved → Breakdown {start_iso} से {end_iso} तक चला। Total time: {duration_hours} hour(s) {duration_minutes} minute(s). Machine History + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
 
 with T[4]:
     st.subheader('Machine History Card — PM/BM'); code=st.selectbox('Machine',MACH.machine_code.tolist(),key='histcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}'); activity_type=st.radio('Maintenance Activity Type',['PM','BM'],horizontal=True,key='hist_activity_type'); st.caption('Select PM for Preventive Maintenance or BM for Breakdown Maintenance. You can add a new history entry below.'); st.markdown('### ➕ Fill / Add Maintenance History'); default_jid=new_id(activity_type)
