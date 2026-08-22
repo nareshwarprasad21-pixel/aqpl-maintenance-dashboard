@@ -801,7 +801,15 @@ with T[7]:
 with T[8]:
     st.subheader('Machine / Equipment Master')
     st.caption('Equipment Master अब Supabase में permanently save होता है। Active machines ही PM, Breakdown और History dropdowns में दिखाई देंगी।')
-    master_view=EQUIPMENT.rename(columns={'machine_name':'Machine Name','machine_code':'Machine Code','make_model':'Make / Model','capacity':'Capacity','location':'Location','is_active':'Active'})
+    total_master_machines=len(EQUIPMENT)
+    active_master_machines=int(EQUIPMENT.is_active.fillna(False).astype(bool).sum())
+    inactive_master_machines=total_master_machines-active_master_machines
+    mc1,mc2,mc3=st.columns(3)
+    mc1.metric('Total Machines in Master',total_master_machines)
+    mc2.metric('Active Machines',active_master_machines)
+    mc3.metric('Inactive Machines',inactive_master_machines)
+    master_view=EQUIPMENT.rename(columns={'machine_name':'Machine Name','machine_code':'Machine Code','make_model':'Make / Model','capacity':'Capacity','location':'Location','is_active':'Active'}).reset_index(drop=True)
+    master_view.insert(0,'S.No.',range(1,total_master_machines+1))
     st.dataframe(master_view,use_container_width=True,hide_index=True)
     master_mode=st.radio('Equipment Master Action',['➕ Add New Machine','✏️ Edit / Activate / Inactivate'],horizontal=True,key='equipment_master_action')
     if master_mode=='➕ Add New Machine':
