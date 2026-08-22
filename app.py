@@ -210,6 +210,26 @@ def load_equipment_master():
 EQUIPMENT=load_equipment_master()
 MACH=EQUIPMENT[EQUIPMENT.is_active].drop(columns=['is_active']).reset_index(drop=True)
 
+def deduplicate_pm_checks(checks):
+    """Return one merged row per check point, preserving the checklist order."""
+    records=checks.to_dict('records') if isinstance(checks,pd.DataFrame) else list(checks)
+    merged={}
+    for item in records:
+        row=dict(item)
+        check_point=str(_value_or(row.get('check_point'),'')).strip()
+        key=check_point.casefold()
+        if not key:
+            continue
+        if key not in merged:
+            merged[key]={'check_point':check_point,'result':'','action':'','remark':''}
+        # Repeated saves can contain progressively completed fields. Keep the
+        # latest non-empty value from every batch instead of printing all rows.
+        for field in ('result','action','remark'):
+            value=row.get(field,'')
+            if value is not None and str(value).strip():
+                merged[key][field]=value
+    return list(merged.values())
+
 def build_pm_checksheet_pdf(job,checks,machine):
     """Return a professional A4 PM checklist as PDF bytes."""
     def val(source,key,default=''):
@@ -286,10 +306,7 @@ def build_pm_checksheet_pdf(job,checks,machine):
             Paragraph('<b>Status</b>',header_style),Paragraph('<b>Action Taken</b>',header_style),
             Paragraph('<b>Remarks / Observation</b>',header_style)]
     rows=[header]
-    if isinstance(checks,pd.DataFrame):
-        records=checks.to_dict('records')
-    else:
-        records=list(checks)
+    records=deduplicate_pm_checks(checks)
     for index,item in enumerate(records,1):
         rows.append([
             Paragraph(str(index),small_style),
@@ -515,6 +532,10 @@ with T[2]:
         if submit:
             now=datetime.combine(maintenance_date,datetime.now().time().replace(second=0,microsecond=0)).isoformat(timespec='minutes')
             execsql('insert or replace into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'PM',code,mr.machine_name,mr.location,now,'Scheduled preventive maintenance','OPEN',int(hot),int(height),None))
+            # A PM Job ID represents one checklist. Re-saving replaces its
+            # linked rows instead of appending another copy of every point.
+            execsql('delete from pm_checks where job_id=?',(jid,))
+            execsql('delete from history where job_id=?',(jid,))
             for pt,status,action_txt,remark in results:
                 execsql('insert into pm_checks(job_id,machine_code,check_point,result,action,remark,created_at) values(?,?,?,?,?,?,?)',(jid,code,pt,status,action_txt,remark,now))
             issues=[]
@@ -525,8 +546,10 @@ with T[2]:
             problem_text='; '.join(issues) if issues else 'Scheduled PM - no abnormality recorded.'
             action_summary='; '.join(actions_done) if actions_done else 'PM checklist completed.'
             execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,'PM',now,problem_text,action_summary,now,f'Machine Type: {machine_type}; Checklist submitted'))
-            if hot: execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,'PM related hot work','DRAFT'))
-            if height: execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,'PM related height work','DRAFT'))
+            existing_hot=q('select id from permits where job_id=? and permit_type=?',(jid,'HOT WORK'))
+            existing_height=q('select id from permits where job_id=? and permit_type=?',(jid,'HEIGHT WORK'))
+            if hot and not len(existing_hot): execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,'PM related hot work','DRAFT'))
+            if height and not len(existing_height): execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,'PM related height work','DRAFT'))
             st.success(f'PM Check Sheet saved for {mr.machine_name}. Actions + Remarks saved separately, Machine History updated, and required permit draft(s) created. Job ID: {jid}')
             current_job={'job_id':jid,'opened_at':now,'status':'OPEN','hot_work':int(hot),'height_work':int(height)}
             current_checks=[{'check_point':pt,'result':status,'action':action_txt,'remark':remark} for pt,status,action_txt,remark in results]
