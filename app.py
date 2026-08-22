@@ -484,9 +484,19 @@ with T[1]:
         st.info(f'📅 {selected_date:%d-%m-%Y} को {len(x)} machine(s) की PM scheduled है।')
         if len(x):
             scheduled_options=[f"{r.machine_name} | {r.machine_code}" for _,r in x.iterrows()]
-            selected_machine=st.selectbox('Select machine scheduled on this date',scheduled_options,key='pm_plan_machine_pick')
+            def select_planned_pm_machine():
+                selected=st.session_state.get('pm_plan_machine_pick','')
+                if selected:
+                    st.session_state['pmcode']=selected.rsplit(' | ',1)[-1]
+            selected_machine=st.selectbox(
+                'Select machine scheduled on this date',scheduled_options,
+                key='pm_plan_machine_pick',on_change=select_planned_pm_machine
+            )
             selected_code=selected_machine.split(' | ')[-1]
-            st.session_state['pmcode']=selected_code
+            # Initialise once. Afterwards the PM Check Sheet selector remains
+            # under the user's control instead of being reset on every rerun.
+            if 'pmcode' not in st.session_state:
+                st.session_state['pmcode']=selected_code
             sm=machine_row(selected_code)
             st.success(f'Selected: {sm.machine_name} · {selected_code} · {sm.location}. PM Check Sheet tab में यही machine pre-selected रहेगी।')
         else:
@@ -503,31 +513,32 @@ with T[2]:
         st.warning('⚠️ PM Checklist Pending / Not Configured for this machine. Use Checklist Mapping tab when checklist becomes available.')
     else:
         st.markdown(f'### PREVENTIVE MAINTENANCE CHECK SHEET FOR {mr.machine_name}')
+        pm_key=re.sub(r'[^A-Za-z0-9_-]+','_',code)
         m1,m2,m3,m4=st.columns(4)
-        m1.text_input('Machine Name',value=str(mr.machine_name),disabled=True,key='pm_machine_name')
-        m2.text_input('Machine Number / Code',value=code,disabled=True,key='pm_machine_code')
+        m1.text_input('Machine Name',value=str(mr.machine_name),disabled=True,key=f'pm_machine_name_{pm_key}')
+        m2.text_input('Machine Number / Code',value=code,disabled=True,key=f'pm_machine_code_{pm_key}')
         maintenance_date=m3.date_input('Maintenance Date',value=TODAY,key='pm_maintenance_date')
-        machine_type=m4.text_input('Machine Type',value=str(mr.location),key='pm_machine_type')
+        machine_type=m4.text_input('Machine Type',value=str(mr.location),key=f'pm_machine_type_{pm_key}')
         d1,d2=st.columns([2,1])
         d1.info(f'Make / Model: {mr.make_model} | Location: {mr.location} | Checklist source: {sheet}')
-        jid=d2.text_input('PM Work Order / Job ID',value=new_id('PM'),key='pmjid')
+        jid=d2.text_input('PM Work Order / Job ID',value=new_id('PM'),key=f'pmjid_{pm_key}')
         st.markdown('#### Checklist Details')
         st.caption('Actual AQPL format की तरह हर check point के लिए Status, Action और Remark अलग-अलग भरें।')
         results=[]
-        with st.form('pmform'):
+        with st.form(f'pmform_{pm_key}'):
             h1,h2,h3,h4,h5=st.columns([0.7,4.6,2,3.4,3.4])
             h1.markdown('**S.No.**'); h2.markdown('**Check Points**'); h3.markdown('**Status**'); h4.markdown('**Actions**'); h5.markdown('**Remarks**')
             for i,pt in enumerate(CHECKS[sheet],1):
                 a,b,c,d,e=st.columns([0.7,4.6,2,3.4,3.4])
                 a.write(i)
                 b.write(pt)
-                status=c.selectbox('Status',['OK','NOT OK','N/A'],key=f's{i}',label_visibility='collapsed')
-                action_txt=d.text_input('Action',key=f'a{i}',label_visibility='collapsed',placeholder='Work/action done')
-                remark=e.text_input('Remark',key=f'r{i}',label_visibility='collapsed',placeholder='Observation/condition')
+                status=c.selectbox('Status',['OK','NOT OK','N/A'],key=f'{pm_key}_s{i}',label_visibility='collapsed')
+                action_txt=d.text_input('Action',key=f'{pm_key}_a{i}',label_visibility='collapsed',placeholder='Work/action done')
+                remark=e.text_input('Remark',key=f'{pm_key}_r{i}',label_visibility='collapsed',placeholder='Observation/condition')
                 results.append((pt,status,action_txt,remark))
             st.markdown('#### Safety / Permit Requirement')
-            hot=st.checkbox('Hot work involved')
-            height=st.checkbox('Height work involved')
+            hot=st.checkbox('Hot work involved',key=f'{pm_key}_hot')
+            height=st.checkbox('Height work involved',key=f'{pm_key}_height')
             submit=st.form_submit_button('Submit PM Check Sheet & Update History',type='primary')
         if submit:
             now=datetime.combine(maintenance_date,datetime.now().time().replace(second=0,microsecond=0)).isoformat(timespec='minutes')
