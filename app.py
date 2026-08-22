@@ -625,13 +625,24 @@ with T[3]:
 
 with T[4]:
     st.subheader('Machine History Card — PM/BM'); code=st.selectbox('Machine',MACH.machine_code.tolist(),key='histcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}'); activity_type=st.radio('Maintenance Activity Type',['PM','BM'],horizontal=True,key='hist_activity_type'); st.caption('Select PM for Preventive Maintenance or BM for Breakdown Maintenance. You can add a new history entry below.'); st.markdown('### ➕ Fill / Add Maintenance History'); default_jid=new_id(activity_type)
+    history_key=re.sub(r'[^A-Za-z0-9_-]+','_',f'{code}_{activity_type}')
+    current_history_time=datetime.now().time().replace(second=0,microsecond=0)
     # Keep the form values on Calculate/Save reruns. A machine/activity-specific
-    # form key prevents one machine's draft from appearing under another one.
-    with st.form(f'manual_history_form_{code}_{activity_type}',clear_on_submit=False):
-        c1,c2,c3=st.columns([1.4,1,1]); jid=c1.text_input('Job / Work Order ID',value=default_jid); start_date=c2.date_input('Start Date',value=TODAY); start_time=c3.time_input('Start Time',value=datetime.now().time().replace(second=0,microsecond=0)); problem=st.text_area('Problem / Maintenance Activity',placeholder='PM activity performed or breakdown/problem details'); action=st.text_area('Action Taken / Work Done',placeholder='Inspection, repair, replacement, adjustment, lubrication, etc.'); r1,r2=st.columns(2); restart_date=r1.date_input('Restart / Completion Date',value=TODAY); restart_time=r2.time_input('Restart / Completion Time',value=datetime.now().time().replace(second=0,microsecond=0)); remark=st.text_area('Remark / Observation')
+    # form and widget keys prevent current time/defaults from replacing values.
+    with st.form(f'manual_history_form_{history_key}',clear_on_submit=False):
+        c1,c2,c3=st.columns([1.4,1,1])
+        jid=c1.text_input('Job / Work Order ID',value=default_jid,key=f'{history_key}_job_id')
+        start_date=c2.date_input('Start Date',value=TODAY,key=f'{history_key}_start_date')
+        start_time=c3.time_input('Start Time',value=current_history_time,key=f'{history_key}_start_time')
+        problem=st.text_area('Problem / Maintenance Activity',key=f'{history_key}_problem',placeholder='PM activity performed or breakdown/problem details')
+        action=st.text_area('Action Taken / Work Done',key=f'{history_key}_action',placeholder='Inspection, repair, replacement, adjustment, lubrication, etc.')
+        r1,r2=st.columns(2)
+        restart_date=r1.date_input('Restart / Completion Date',value=TODAY,key=f'{history_key}_restart_date')
+        restart_time=r2.time_input('Restart / Completion Time',value=current_history_time,key=f'{history_key}_restart_time')
+        remark=st.text_area('Remark / Observation',key=f'{history_key}_remark')
         start_dt_value=datetime.combine(start_date,start_time); restart_dt_value=datetime.combine(restart_date,restart_time); duration_seconds=(restart_dt_value-start_dt_value).total_seconds(); valid_history_time=duration_seconds>=0; downtime=round(max(duration_seconds,0)/3600,2); total_history_minutes=int(max(duration_seconds,0)//60); history_hours,history_minutes=divmod(total_history_minutes,60)
         if activity_type=='BM':
-            b1,b2=st.columns(2); cause=b1.text_input('Breakdown Cause / Suspected Cause'); b2.text_input('Calculated Downtime',value=f'{history_hours} hour(s) {history_minutes} minute(s) ({downtime:.2f} hours)',disabled=True); spares=st.text_input('Spares / Material Used')
+            b1,b2=st.columns(2); cause=b1.text_input('Breakdown Cause / Suspected Cause',key=f'{history_key}_cause'); b2.text_input('Calculated Downtime',value=f'{history_hours} hour(s) {history_minutes} minute(s) ({downtime:.2f} hours)',disabled=True); spares=st.text_input('Spares / Material Used',key=f'{history_key}_spares')
         else:cause=''; spares=''
         fb1,fb2=st.columns(2)
         calculate_history=fb1.form_submit_button('⏱️ Calculate Downtime',use_container_width=True)
