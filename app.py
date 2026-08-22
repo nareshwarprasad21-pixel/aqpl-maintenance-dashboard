@@ -424,6 +424,33 @@ def new_id(kind):
                 if match:sequences.append(int(match.group(1)))
         return f"{prefix}-{max(sequences,default=0)+1:03d}"
     return f"AQPL-{kind}-{now_ist:%Y%m%d-%H%M%S}"
+
+def resequence_daily_bm_job_ids(deleted_job_id):
+    """Close gaps in the three-digit BM sequence for the deleted job's date."""
+    match=re.fullmatch(r'AQPL-BM-(\d{8})-(\d{3})',str(deleted_job_id))
+    if not match:
+        return {}
+    date_part=match.group(1)
+    prefix=f'AQPL-BM-{date_part}-'
+    jobs=q("select job_id,opened_at from jobs where job_type='BM' order by opened_at asc")
+    daily=[]
+    for _,row in jobs.iterrows():
+        job_id=str(row.job_id)
+        seq_match=re.fullmatch(rf'{re.escape(prefix)}(\d{{3}})',job_id)
+        if seq_match:
+            daily.append((job_id,str(_value_or(row.opened_at,'')),int(seq_match.group(1))))
+    daily.sort(key=lambda item:(item[1],item[2]))
+    renamed={}
+    linked_tables=['pm_checks','permits','whywhy','breakdown_activity_log','breakdowns','history','jobs']
+    for sequence,(old_job_id,_,_) in enumerate(daily,1):
+        new_job_id=f'{prefix}{sequence:03d}'
+        if old_job_id==new_job_id:
+            continue
+        for table in linked_tables:
+            execsql(f'update {table} set job_id=? where job_id=?',(new_job_id,old_job_id))
+        renamed[old_job_id]=new_job_id
+    return renamed
+
 def machine_row(code): return MACH[MACH.machine_code==code].iloc[0]
 
 def suggest_sheet(name):
@@ -627,11 +654,17 @@ with T[4]:
     st.subheader('Machine History Card — PM/BM'); code=st.selectbox('Machine',MACH.machine_code.tolist(),key='histcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}'); activity_type=st.radio('Maintenance Activity Type',['PM','BM'],horizontal=True,key='hist_activity_type'); st.caption('Select PM for Preventive Maintenance or BM for Breakdown Maintenance. You can add a new history entry below.'); st.markdown('### ➕ Fill / Add Maintenance History'); default_jid=new_id(activity_type)
     history_key=re.sub(r'[^A-Za-z0-9_-]+','_',f'{code}_{activity_type}')
     current_history_time=datetime.now().time().replace(second=0,microsecond=0)
+    # Apply a delete-triggered renumber before the Job ID widget is created.
+    pending_renames=st.session_state.pop('bm_job_id_renumber_map',{})
+    history_job_key=f'{history_key}_job_id'
+    current_draft_job=st.session_state.get(history_job_key)
+    if current_draft_job in pending_renames:
+        st.session_state[history_job_key]=pending_renames[current_draft_job]
     # Keep the form values on Calculate/Save reruns. A machine/activity-specific
     # form and widget keys prevent current time/defaults from replacing values.
     with st.form(f'manual_history_form_{history_key}',clear_on_submit=False):
         c1,c2,c3=st.columns([1.4,1,1])
-        jid=c1.text_input('Job / Work Order ID',value=default_jid,key=f'{history_key}_job_id')
+        jid=c1.text_input('Job / Work Order ID',value=default_jid,key=history_job_key)
         start_date=c2.date_input('Start Date',value=TODAY,key=f'{history_key}_start_date')
         start_time=c3.time_input('Start Time',value=current_history_time,key=f'{history_key}_start_time')
         problem=st.text_area('Problem / Maintenance Activity',key=f'{history_key}_problem',placeholder='PM activity performed or breakdown/problem details')
@@ -677,7 +710,12 @@ with T[4]:
             # Delete child/link records first, then the parent work order.
             for linked_table in ['pm_checks','permits','whywhy','breakdown_activity_log','breakdowns','history','jobs']:
                 execsql(f'delete from {linked_table} where job_id=?',(delete_job_id,))
-            st.session_state[delete_flash_key]=f'{delete_job_id} और उसके linked records successfully delete हो गए। बाकी entries सुरक्षित हैं।'
+            renamed=resequence_daily_bm_job_ids(delete_job_id) if activity_type=='BM' else {}
+            st.session_state['bm_job_id_renumber_map']=renamed
+            renumber_note=''
+            if renamed:
+                renumber_note=' Remaining daily BM Job IDs sequence में renumber हो गई हैं: '+', '.join(f'{old} → {new}' for old,new in renamed.items())+'.'
+            st.session_state[delete_flash_key]=f'{delete_job_id} और उसके linked records successfully delete हो गए। बाकी entries सुरक्षित हैं।{renumber_note}'
             st.rerun()
 
 with T[5]:
