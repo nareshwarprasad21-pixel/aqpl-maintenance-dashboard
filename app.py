@@ -7,7 +7,7 @@ from xml.sax.saxutils import escape
 
 from reportlab.lib import colors
 from reportlab.lib.enums import TA_CENTER
-from reportlab.lib.pagesizes import A4
+from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
@@ -232,13 +232,15 @@ def deduplicate_pm_checks(checks):
                 merged[key][field]=value
     return list(merged.values())
 
-def pdf_brand_header(title_style):
+def pdf_brand_header(title_style,total_width=184*mm):
     """Build a balanced document header with the official company logo."""
     logo=RLImage(BytesIO(base64.b64decode(LOGO_BASE64)),width=27*mm,height=15.7*mm)
+    side_width=32*mm
     header=Table(
         [[logo,Paragraph('ASIAN QUAARTZ PVT LTD',title_style),'']],
-        colWidths=[32*mm,120*mm,32*mm]
+        colWidths=[side_width,total_width-(2*side_width),side_width]
     )
+    header.hAlign='CENTER'
     header.setStyle(TableStyle([
         ('VALIGN',(0,0),(-1,-1),'MIDDLE'),
         ('ALIGN',(0,0),(0,0),'LEFT'),
@@ -426,6 +428,78 @@ def build_breakdown_report_pdf(job,breakdown,machine):
     def footer(canvas,document):
         canvas.saveState(); canvas.setFont(regular,7); canvas.setFillColor(colors.HexColor('#64748b')); canvas.drawString(14*mm,8*mm,f"Document: AQPL/MAINT/BM | Job: {val(breakdown,'job_id')}"); canvas.drawRightString(A4[0]-14*mm,8*mm,f"Page {document.page}"); canvas.restoreState()
     doc.build(story,onFirstPage=footer,onLaterPages=footer); return buffer.getvalue()
+
+def build_machine_history_pdf(history_rows,machine,activity_type):
+    """Return the selected machine's complete filtered PM/BM history as PDF."""
+    def val(source,key,default=''):
+        try:value=source.get(key,default)
+        except AttributeError:value=default
+        if value is None:return default
+        try:
+            if pd.isna(value):return default
+        except (TypeError,ValueError):pass
+        return str(value)
+
+    regular='Helvetica'; bold='Helvetica-Bold'
+    regular_path='/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'
+    bold_path='/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+    if os.path.exists(regular_path) and os.path.exists(bold_path):
+        try:
+            pdfmetrics.registerFont(TTFont('AQPLHistorySans',regular_path))
+            pdfmetrics.registerFont(TTFont('AQPLHistorySansBold',bold_path))
+            regular='AQPLHistorySans'; bold='AQPLHistorySansBold'
+        except Exception:pass
+
+    buffer=BytesIO(); page_size=landscape(A4)
+    doc=SimpleDocTemplate(buffer,pagesize=page_size,rightMargin=10*mm,leftMargin=10*mm,
+        topMargin=12*mm,bottomMargin=15*mm,
+        title=f"{activity_type} Machine History - {val(machine,'machine_code')}",
+        author='Asian Quaartz Pvt Ltd')
+    styles=getSampleStyleSheet()
+    title_style=ParagraphStyle('HistoryTitle',parent=styles['Title'],fontName=bold,
+        fontSize=15,leading=18,textColor=colors.HexColor('#10213b'),alignment=TA_CENTER,spaceAfter=2*mm)
+    subtitle_style=ParagraphStyle('HistorySubtitle',parent=styles['Heading2'],fontName=bold,
+        fontSize=11,leading=14,textColor=colors.HexColor('#1d4ed8'),alignment=TA_CENTER,spaceAfter=4*mm)
+    body=ParagraphStyle('HistoryBody',parent=styles['BodyText'],fontName=regular,fontSize=7,leading=9,textColor=colors.HexColor('#111827'))
+    body_bold=ParagraphStyle('HistoryBold',parent=body,fontName=bold)
+    header_style=ParagraphStyle('HistoryHeader',parent=body_bold,textColor=colors.white,alignment=TA_CENTER)
+    story=[pdf_brand_header(title_style,total_width=277*mm),Paragraph(f'{escape(activity_type)} MACHINE HISTORY REPORT',subtitle_style)]
+    machine_meta=[
+        [Paragraph('<b>Machine Name</b>',body_bold),Paragraph(escape(val(machine,'machine_name')),body),
+         Paragraph('<b>Machine Code</b>',body_bold),Paragraph(escape(val(machine,'machine_code')),body)],
+        [Paragraph('<b>Location</b>',body_bold),Paragraph(escape(val(machine,'location')),body),
+         Paragraph('<b>Make / Model</b>',body_bold),Paragraph(escape(val(machine,'make_model')),body)]
+    ]
+    meta=Table(machine_meta,colWidths=[30*mm,108.5*mm,30*mm,108.5*mm])
+    meta.setStyle(TableStyle([('GRID',(0,0),(-1,-1),0.45,colors.HexColor('#94a3b8')),
+        ('BACKGROUND',(0,0),(0,-1),colors.HexColor('#e2e8f0')),('BACKGROUND',(2,0),(2,-1),colors.HexColor('#e2e8f0')),
+        ('VALIGN',(0,0),(-1,-1),'MIDDLE'),('LEFTPADDING',(0,0),(-1,-1),4),('RIGHTPADDING',(0,0),(-1,-1),4),
+        ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
+    story.extend([meta,Spacer(1,5*mm)])
+    rows=[[Paragraph('<b>S.No.</b>',header_style),Paragraph('<b>Job / Work ID</b>',header_style),
+        Paragraph('<b>Start Date-Time</b>',header_style),Paragraph('<b>Problem / Activity</b>',header_style),
+        Paragraph('<b>Action Taken / Work Done</b>',header_style),Paragraph('<b>Completion Date-Time</b>',header_style),
+        Paragraph('<b>Remark / Observation</b>',header_style)]]
+    records=history_rows.to_dict('records') if isinstance(history_rows,pd.DataFrame) else list(history_rows)
+    for index,row in enumerate(records,1):
+        rows.append([Paragraph(str(index),body),Paragraph(escape(val(row,'job_id')),body),
+            Paragraph(escape(val(row,'start_dt')),body),Paragraph(escape(val(row,'problem')),body),
+            Paragraph(escape(val(row,'action_taken')),body),Paragraph(escape(val(row,'restart_dt')),body),
+            Paragraph(escape(val(row,'remark')),body)])
+    history_table=Table(rows,colWidths=[10*mm,35*mm,30*mm,55*mm,55*mm,30*mm,62*mm],repeatRows=1)
+    history_table.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),colors.HexColor('#10213b')),
+        ('GRID',(0,0),(-1,-1),0.4,colors.HexColor('#94a3b8')),('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('ALIGN',(0,0),(0,-1),'CENTER'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f8fafc')]),
+        ('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3),
+        ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
+    story.append(history_table)
+    def footer(canvas,document):
+        canvas.saveState(); canvas.setFont(regular,7); canvas.setFillColor(colors.HexColor('#64748b'))
+        canvas.drawString(10*mm,7*mm,f"Document: AQPL/MAINT/HISTORY | Machine: {val(machine,'machine_code')}")
+        canvas.drawRightString(page_size[0]-10*mm,7*mm,f'Page {document.page}')
+        canvas.restoreState()
+    doc.build(story,onFirstPage=footer,onLaterPages=footer)
+    return buffer.getvalue()
 
 def new_id(kind):
     """Generate readable IST-based PM/BM IDs with a daily running sequence."""
@@ -723,6 +797,16 @@ with T[4]:
         st.success(st.session_state.pop(delete_flash_key))
     history_view=q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? and maintenance_type=? order by id desc',(code,activity_type)); st.dataframe(history_view,use_container_width=True,hide_index=True)
     if len(history_view):
+        machine_history_pdf=build_machine_history_pdf(history_view,mr,activity_type)
+        safe_machine_code=re.sub(r'[^A-Za-z0-9_-]+','-',code).strip('-')
+        st.download_button(
+            f'⬇️ Download {activity_type} Machine History PDF',
+            data=machine_history_pdf,
+            file_name=f'{activity_type}_Machine_History_{safe_machine_code}.pdf',
+            mime='application/pdf',key=f'machine_history_pdf_{history_key}',
+            type='primary',on_click='ignore',use_container_width=True
+        )
+        st.caption(f'इस PDF में {mr.machine_name} की सभी saved {activity_type} history entries शामिल हैं।')
         st.markdown('#### 🗑️ Delete Saved Entry')
         delete_options=[f"{r.job_id} | {str(_value_or(r.problem,'Maintenance entry'))[:60]}" for _,r in history_view.iterrows()]
         selected_delete=st.selectbox('Select Job ID to delete',delete_options,key=f'history_delete_pick_{code}_{activity_type}')
