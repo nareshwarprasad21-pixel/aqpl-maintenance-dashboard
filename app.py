@@ -428,16 +428,16 @@ def build_breakdown_report_pdf(job,breakdown,machine):
     doc.build(story,onFirstPage=footer,onLaterPages=footer); return buffer.getvalue()
 
 def new_id(kind):
-    """Generate readable IST-based IDs; BM uses a daily running sequence."""
+    """Generate readable IST-based PM/BM IDs with a daily running sequence."""
     now_ist=datetime.now(ZoneInfo('Asia/Kolkata'))
-    if kind=='BM':
-        prefix=f"AQPL-BM-{now_ist:%Y%m%d}"
-        existing=q("select job_id from jobs where job_type='BM'")
+    if kind in ('PM','BM'):
+        prefix=f"AQPL-{kind}-{now_ist:%Y%m%d}"
+        existing=q('select job_id from jobs where job_type=?',(kind,))
         sequences=[]
         if len(existing):
             for job_id in existing.job_id.fillna('').astype(str):
                 # Only the new three-digit suffix participates in sequencing;
-                # legacy HHMMSS IDs such as -073804 must be ignored.
+                # legacy time-based IDs such as -123334 are ignored.
                 match=re.fullmatch(rf'{re.escape(prefix)}-(\d{{3}})',job_id)
                 if match:sequences.append(int(match.group(1)))
         return f"{prefix}-{max(sequences,default=0)+1:03d}"
