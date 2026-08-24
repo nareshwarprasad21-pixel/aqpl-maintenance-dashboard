@@ -39,12 +39,12 @@ st.markdown('''<style>
 </style>''',unsafe_allow_html=True)
 
 @st.cache_data
-def load_static():
+def load_static(cache_version):
     m=pd.read_csv(os.path.join(DATA,'machines.csv')).fillna('')
     p=pd.read_csv(os.path.join(DATA,'pm_plan.csv')); p['scheduled_date']=pd.to_datetime(p['scheduled_date']).dt.date
     with open(os.path.join(DATA,'checklists.json'),encoding='utf-8') as f:c=json.load(f)
     return m,p,c
-STATIC_MACH,PLAN,CHECKS=load_static()
+STATIC_MACH,PLAN,CHECKS=load_static('2026-08-24-belt-conveyor-v1')
 MACH=STATIC_MACH.copy()
 
 TABLE_COLUMNS={
