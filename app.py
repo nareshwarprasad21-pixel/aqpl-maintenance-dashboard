@@ -545,8 +545,16 @@ def resequence_daily_bm_job_ids(deleted_job_id):
 
 def machine_row(code): return MACH[MACH.machine_code==code].iloc[0]
 
+def machine_type_for(machine):
+    """Return the equipment type instead of incorrectly showing its location."""
+    machine_name=str(_value_or(machine.machine_name,'')).strip().lower()
+    machine_code=str(_value_or(machine.machine_code,'')).strip().lower()
+    if 'compressor' in machine_name or '/comp-' in machine_code:
+        return 'AIR COMPRESSOR'
+    return str(_value_or(machine.location,''))
+
 def suggest_sheet(name):
-    n=name.lower(); rules=[('jaw','Jaw crusher'),('secondary cone','sec cone cr'),('tertiary cone','Tertiary cone crusher'),('primary class','Vibro acreen'),('scrubber','scrubber'),('washing class','washing screen'),('de-water','DEWAT.SCREEN'),('heater-1','Heter-1'),('heater-2','Heter-2'),('heater-3','Heter-3'),('primary ball','P.B.MILL'),('secondary ball','S.B.mill'),('primary dynamic','P.Dy.seperator'),('secondary dynamic','S.dy.seprator'),('primary bag','P.baghouse'),('secondary bag','s.baghouse'),('primary vibro','P.vibroscreen'),('secondary vibro','S.vibro screen'),('magnetic','magnetic sep.-1'),('eot crane-1','EOT CRANE-1'),('eot crane-2','EOT CRANE-2'),('eot crane-3','EOT CRAN-3'),('compressor-1','compressor-1'),('compressor-2','compressor-2'),('compressor-3','compressor-3'),('compressor-4','compressor-4'),('chiller-1','chiller-1'),('chiller-2','chiller-2'),('chiller-3','chiller-3')]
+    n=name.lower(); rules=[('jaw','Jaw crusher'),('secondary cone','sec cone cr'),('tertiary cone','Tertiary cone crusher'),('primary class','Vibro acreen'),('scrubber','scrubber'),('washing class','washing screen'),('de-water','DEWAT.SCREEN'),('heater-1','Heter-1'),('heater-2','Heter-2'),('heater-3','Heter-3'),('primary ball','P.B.MILL'),('secondary ball','S.B.mill'),('primary dynamic','P.Dy.seperator'),('secondary dynamic','S.dy.seprator'),('primary bag','P.baghouse'),('secondary bag','s.baghouse'),('primary vibro','P.vibroscreen'),('secondary vibro','S.vibro screen'),('magnetic','magnetic sep.-1'),('eot crane-1','EOT CRANE-1'),('eot crane-2','EOT CRANE-2'),('eot crane-3','EOT CRAN-3'),('compressor-1','compressor-1'),('compressor-2','compressor-2'),('compressor-3','compressor-3'),('compressor-4','compressor-4'),('compressor-5','compressor-4'),('chiller-1','chiller-1'),('chiller-2','chiller-2'),('chiller-3','chiller-3')]
     for k,s in rules:
         if k in n:return s
     return ''
@@ -642,7 +650,7 @@ with T[2]:
         m1.text_input('Machine Name',value=str(mr.machine_name),disabled=True,key=f'pm_machine_name_{pm_key}')
         m2.text_input('Machine Number / Code',value=code,disabled=True,key=f'pm_machine_code_{pm_key}')
         maintenance_date=m3.date_input('Maintenance Date',value=TODAY,key='pm_maintenance_date')
-        machine_type=m4.text_input('Machine Type',value=str(mr.location),key=f'pm_machine_type_{pm_key}')
+        machine_type=m4.text_input('Machine Type',value=machine_type_for(mr),key=f'pm_machine_type_{pm_key}')
         d1,d2=st.columns([2,1])
         d1.info(f'Make / Model: {mr.make_model} | Location: {mr.location} | Checklist source: {sheet}')
         jid=d2.text_input('PM Work Order / Job ID',value=new_id('PM'),key=f'pmjid_{pm_key}')
