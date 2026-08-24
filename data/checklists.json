@@ -373,5 +373,15 @@
     "check water leakage",
     "oil level in compressor",
     "alarm history check"
+  ],
+  "BELT CONVEYOR": [
+    "check belt conveyor alignment",
+    "check tail drum bearing condition",
+    "check motor cable",
+    "check gearbox oil level",
+    "check belt condition",
+    "check for noise and vibration",
+    "check coupling nut and bolt",
+    "check head drum bearing condition"
   ]
 }
