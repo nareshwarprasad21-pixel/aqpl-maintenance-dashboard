@@ -652,7 +652,7 @@ with T[2]:
         maintenance_date=m3.date_input('Maintenance Date',value=TODAY,key='pm_maintenance_date')
         machine_type=m4.text_input('Machine Type',value=machine_type_for(mr),key=f'pm_machine_type_{pm_key}')
         d1,d2=st.columns([2,1])
-        d1.info(f'Make / Model: {mr.make_model} | Location: {mr.location} | Checklist source: {sheet}')
+        d1.info(f'Make / Model: {mr.make_model} | Location: {mr.location}')
         jid=d2.text_input('PM Work Order / Job ID',value=new_id('PM'),key=f'pmjid_{pm_key}')
         st.markdown('#### Checklist Details')
         st.caption('Actual AQPL format की तरह हर check point के लिए Status, Action और Remark अलग-अलग भरें।')
