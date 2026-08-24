@@ -556,13 +556,20 @@ def machine_type_for(machine):
     return str(_value_or(machine.location,''))
 
 def suggest_sheet(name):
-    n=name.lower(); rules=[('b.c.','BELT CONVEYOR'),('jaw','Jaw crusher'),('secondary cone','sec cone cr'),('tertiary cone','Tertiary cone crusher'),('primary class','Vibro acreen'),('scrubber','scrubber'),('washing class','washing screen'),('de-water','DEWAT.SCREEN'),('heater-1','Heter-1'),('heater-2','Heter-2'),('heater-3','Heter-3'),('primary ball','P.B.MILL'),('secondary ball','S.B.mill'),('primary dynamic','P.Dy.seperator'),('secondary dynamic','S.dy.seprator'),('primary bag','P.baghouse'),('secondary bag','s.baghouse'),('primary vibro','P.vibroscreen'),('secondary vibro','S.vibro screen'),('magnetic','magnetic sep.-1'),('eot crane-1','EOT CRANE-1'),('eot crane-2','EOT CRANE-2'),('eot crane-3','EOT CRAN-3'),('compressor-1','compressor-1'),('compressor-2','compressor-2'),('compressor-3','compressor-3'),('compressor-4','compressor-4'),('compressor-5','compressor-4'),('chiller-1','chiller-1'),('chiller-2','chiller-2'),('chiller-3','chiller-3')]
+    n=name.lower(); rules=[('jaw','Jaw crusher'),('secondary cone','sec cone cr'),('tertiary cone','Tertiary cone crusher'),('primary class','Vibro acreen'),('scrubber','scrubber'),('washing class','washing screen'),('de-water','DEWAT.SCREEN'),('heater-1','Heter-1'),('heater-2','Heter-2'),('heater-3','Heter-3'),('primary ball','P.B.MILL'),('secondary ball','S.B.mill'),('primary dynamic','P.Dy.seperator'),('secondary dynamic','S.dy.seprator'),('primary bag','P.baghouse'),('secondary bag','s.baghouse'),('primary vibro','P.vibroscreen'),('secondary vibro','S.vibro screen'),('magnetic','magnetic sep.-1'),('eot crane-1','EOT CRANE-1'),('eot crane-2','EOT CRANE-2'),('eot crane-3','EOT CRAN-3'),('compressor-1','compressor-1'),('compressor-2','compressor-2'),('compressor-3','compressor-3'),('compressor-4','compressor-4'),('compressor-5','compressor-4'),('chiller-1','chiller-1'),('chiller-2','chiller-2'),('chiller-3','chiller-3')]
     for k,s in rules:
         if k in n:return s
     return ''
+BELT_CONVEYOR_CODES={
+    'AQPL/TER BC-7','AQPL/TER BC-8','AQPL/TER BC-9',
+    'AQPL/TER BC-10','AQPL/TER BC-11','AQPL/TER BC-12',
+    'AQPL/TER BC-13','AQPL/TER BC-14','AQPL/TER H-7'
+}
+
 def checklist_for(code):
     r=q('select sheet_name from checklist_map where machine_code=?',(code,))
     if len(r) and r.iloc[0,0] in CHECKS:return r.iloc[0,0]
+    if code in BELT_CONVEYOR_CODES:return 'BELT CONVEYOR'
     return suggest_sheet(machine_row(code).machine_name)
 
 def top_header():
