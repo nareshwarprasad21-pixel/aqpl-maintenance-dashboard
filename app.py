@@ -569,9 +569,10 @@ BELT_CONVEYOR_CODES={
 }
 
 def checklist_for(code):
+    # Dedicated pneumatic-line checklist must override any stale mapping row.
+    if code=='AQPL/P LINE':return 'PNEUMATIC CONVEYING LINE'
     r=q('select sheet_name from checklist_map where machine_code=?',(code,))
     if len(r) and r.iloc[0,0] in CHECKS:return r.iloc[0,0]
-    if code=='AQPL/P LINE':return 'PNEUMATIC CONVEYING LINE'
     if code in BELT_CONVEYOR_CODES:return 'BELT CONVEYOR'
     return suggest_sheet(machine_row(code).machine_name)
 
