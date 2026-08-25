@@ -1,4 +1,17 @@
 {
+  "PNEUMATIC CONVEYING LINE": [
+    "Check slide gate valve for leakage",
+    "Check dome valve seal for leakage",
+    "Check pneumatic line back pressure",
+    "Check solenoid valve for malfunction",
+    "Check dome valve shaft for leakage",
+    "Check NRV condition",
+    "Check booster valve condition",
+    "Check pneumatic line for leakage",
+    "Check seal pressure",
+    "Check pneumatic storage silo RAL condition",
+    "Check expansion bellow for leakage"
+  ],
   "Jaw crusher": [
     "check moving jaw and stationary jaw are not worn out",
     "Vibro feeder chocked or not",
