@@ -492,7 +492,26 @@ def build_machine_history_pdf(history_rows,machine,activity_type):
         ('ALIGN',(0,0),(0,-1),'CENTER'),('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white,colors.HexColor('#f8fafc')]),
         ('LEFTPADDING',(0,0),(-1,-1),3),('RIGHTPADDING',(0,0),(-1,-1),3),
         ('TOPPADDING',(0,0),(-1,-1),4),('BOTTOMPADDING',(0,0),(-1,-1),4)]))
-    story.append(history_table)
+    story.extend([history_table,Spacer(1,6*mm)])
+
+    # Match the approved AQPL Machine History Card format: keep clear
+    # Prepared By / Approved By signature boxes at the bottom of the report.
+    signatures=[
+        [Paragraph('<b>Prepared By</b>',body_bold),Paragraph('<b>Approved By</b>',body_bold)],
+        [Paragraph('<br/><br/>Name &amp; Signature: ______________________________',body),
+         Paragraph('<br/><br/>Name &amp; Signature: ______________________________',body)],
+        [Paragraph('Date: ____________________',body),Paragraph('Date: ____________________',body)]
+    ]
+    sign_table=Table(signatures,colWidths=[138.5*mm,138.5*mm])
+    sign_table.setStyle(TableStyle([
+        ('GRID',(0,0),(-1,-1),0.5,colors.HexColor('#64748b')),
+        ('BACKGROUND',(0,0),(-1,0),colors.HexColor('#e2e8f0')),
+        ('VALIGN',(0,0),(-1,-1),'TOP'),
+        ('LEFTPADDING',(0,0),(-1,-1),6),('RIGHTPADDING',(0,0),(-1,-1),6),
+        ('TOPPADDING',(0,0),(-1,-1),5),('BOTTOMPADDING',(0,0),(-1,-1),5)
+    ]))
+    story.append(sign_table)
+
     def footer(canvas,document):
         canvas.saveState(); canvas.setFont(regular,7); canvas.setFillColor(colors.HexColor('#64748b'))
         canvas.drawString(10*mm,7*mm,f"Document: AQPL/MAINT/HISTORY | Machine: {val(machine,'machine_code')}")
