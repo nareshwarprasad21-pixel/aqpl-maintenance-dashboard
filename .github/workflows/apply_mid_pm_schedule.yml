@@ -1,0 +1,30 @@
+name: Apply MID PM Schedule Update
+
+on:
+  push:
+    paths:
+      - 'scripts/patch_mid_pm_schedule.py'
+      - '.github/workflows/apply_mid_pm_schedule.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply MID machine and PM schedule patch
+        run: python scripts/patch_mid_pm_schedule.py
+      - name: Commit generated data updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/machines.csv data/pm_plan.csv
+          if git diff --cached --quiet; then
+            echo "No data changes needed"
+          else
+            git commit -m "Add MID machines and 2026-27 PM schedule"
+            git push
+          fi
