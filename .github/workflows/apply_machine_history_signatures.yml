@@ -1,0 +1,28 @@
+name: Apply Machine History Signatures
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/patch_machine_history_signatures.py'
+      - '.github/workflows/apply_machine_history_signatures.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch Machine History PDF signatures
+        run: python tools/patch_machine_history_signatures.py
+      - name: Commit updated app.py
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet || git commit -m "Add Prepared By and Approved By to Machine History PDF"
+          git push
