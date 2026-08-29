@@ -1,0 +1,28 @@
+name: Apply FIBC Packing Checklist Fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/patch_fibc_packing.py'
+      - '.github/workflows/apply_fibc_packing_patch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch FIBC packing checklist cache and override
+        run: python .github/scripts/patch_fibc_packing.py
+      - name: Commit updated app.py
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app.py
+          git diff --cached --quiet || git commit -m "Fix FIBC packing checklist cache and mapping"
+          git push
