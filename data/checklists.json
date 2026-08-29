@@ -396,5 +396,13 @@
     "check for noise and vibration",
     "check coupling nut and bolt",
     "check head drum bearing condition"
+  ],
+  "FIBC PACKING STATION": [
+    "Check feed hopper vibrator motor",
+    "Check butterfly valve",
+    "Check jumbo bag clamp",
+    "Check FRL",
+    "Check hydraulic cylinder",
+    "Check bellow condition"
   ]
 }
