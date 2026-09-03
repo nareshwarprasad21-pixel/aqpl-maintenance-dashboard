@@ -44,7 +44,7 @@ def load_static(cache_version):
     p=pd.read_csv(os.path.join(DATA,'pm_plan.csv')); p['scheduled_date']=pd.to_datetime(p['scheduled_date']).dt.date
     with open(os.path.join(DATA,'checklists.json'),encoding='utf-8') as f:c=json.load(f)
     return m,p,c
-STATIC_MACH,PLAN,CHECKS=load_static('2026-08-29-packing-machine-v1')
+STATIC_MACH,PLAN,CHECKS=load_static('2026-09-03-dust-collector-v1')
 MACH=STATIC_MACH.copy()
 
 TABLE_COLUMNS={
@@ -195,6 +195,20 @@ if USE_SUPABASE:
         st.sidebar.error(f'Supabase connection error: {exc}')
 else:
     st.sidebar.warning('Local database active · add Supabase secrets')
+
+def ensure_dust_collector_equipment():
+    """Keep the approved MID dust collectors available in the live Equipment Master."""
+    required=[
+        ('AQPL/MID DC-1','MID DUST COLLECTOR DC-1','','','MID'),
+        ('AQPL/MID DC-2','MID DUST COLLECTOR DC-2','','','MID'),
+        ('AQPL/MID DC-3','MID DUST COLLECTOR DC-3','','','MID')
+    ]
+    now=datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(timespec='seconds')
+    for code,name,make_model,capacity,location in required:
+        if q('select machine_code from equipment_master where machine_code=?',(code,)).empty:
+            execsql('insert into equipment_master(machine_code,machine_name,make_model,capacity,location,is_active,created_at,updated_at) values(?,?,?,?,?,?,?,?)',(code,name,make_model,capacity,location,True,now,now))
+
+ensure_dust_collector_equipment()
 
 def load_equipment_master():
     """Load the editable master; seed the local fallback from the bundled CSV."""
@@ -572,6 +586,8 @@ def machine_type_for(machine):
         return 'AIR COMPRESSOR'
     if machine_code == 'aqpl/p line' or 'pnematic conveying line' in machine_name or 'pneumatic conveying line' in machine_name:
         return 'PNEUMATIC CONVEYING SYSTEM'
+    if 'dust collector' in machine_name or '/mid dc-' in machine_code:
+        return 'DUST COLLECTOR'
     if 'b.c.' in machine_name:
         return 'BELT CONVEYOR'
     return str(_value_or(machine.location,''))
@@ -586,11 +602,13 @@ BELT_CONVEYOR_CODES={
     'AQPL/TER BC-10','AQPL/TER BC-11','AQPL/TER BC-12',
     'AQPL/TER BC-13','AQPL/TER BC-14','AQPL/TER H-7'
 }
+DUST_COLLECTOR_CODES={'AQPL/MID DC-1','AQPL/MID DC-2','AQPL/MID DC-3'}
 
 def checklist_for(code):
     # Dedicated pneumatic-line checklist must override any stale mapping row.
     if code=='AQPL/P LINE':return 'PNEUMATIC CONVEYING LINE'
     if code=='AQPL/FIBC-A':return 'PACKING MACHINE'
+    if code in DUST_COLLECTOR_CODES:return 'DUST COLLECTOR'
     r=q('select sheet_name from checklist_map where machine_code=?',(code,))
     if len(r) and r.iloc[0,0] in CHECKS:return r.iloc[0,0]
     if code in BELT_CONVEYOR_CODES:return 'BELT CONVEYOR'
