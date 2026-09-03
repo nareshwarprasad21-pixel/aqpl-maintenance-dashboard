@@ -404,5 +404,16 @@
     "Check FRL",
     "Check hydraulic cylinder",
     "Check bellow condition"
+  ],
+  "DUST COLLECTOR": [
+    "Check for dust leakage",
+    "Check for abnormal vibration and noise",
+    "Check impeller condition",
+    "Check for loose nuts and bolts",
+    "Check solenoid valve operation",
+    "Check diaphragm condition",
+    "Check for air leakage from the air header",
+    "Check RAL for wear and tear",
+    "Check RAL chain condition"
   ]
 }
