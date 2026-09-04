@@ -44,7 +44,7 @@ def load_static(cache_version):
     p=pd.read_csv(os.path.join(DATA,'pm_plan.csv')); p['scheduled_date']=pd.to_datetime(p['scheduled_date']).dt.date
     with open(os.path.join(DATA,'checklists.json'),encoding='utf-8') as f:c=json.load(f)
     return m,p,c
-STATIC_MACH,PLAN,CHECKS=load_static('2026-09-03-pm-plan-2026-27-v2')
+STATIC_MACH,PLAN,CHECKS=load_static('2026-09-04-vibro-screen-spelling-v3')
 MACH=STATIC_MACH.copy()
 
 TABLE_COLUMNS={
