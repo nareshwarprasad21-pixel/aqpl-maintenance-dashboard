@@ -210,6 +210,15 @@ def ensure_dust_collector_equipment():
 
 ensure_dust_collector_equipment()
 
+def repair_vibro_screen_mappings():
+    """Repair the earlier misspelled checklist name in saved mappings."""
+    old_name='Vibro a'+'creen'
+    rows=q('select machine_code from checklist_map where sheet_name=?',(old_name,))
+    for machine_code in rows.machine_code.tolist():
+        execsql('update checklist_map set sheet_name=? where machine_code=?',('Vibro screen',machine_code))
+
+repair_vibro_screen_mappings()
+
 def load_equipment_master():
     """Load the editable master; seed the local fallback from the bundled CSV."""
     rows=q('select machine_code,machine_name,make_model,capacity,location,is_active from equipment_master order by machine_name')
@@ -616,7 +625,7 @@ def machine_type_for(machine):
     return str(_value_or(machine.location,''))
 
 def suggest_sheet(name):
-    n=name.lower(); rules=[('pnematic conveying line','PNEUMATIC CONVEYING LINE'),('pneumatic conveying line','PNEUMATIC CONVEYING LINE'),('jaw','Jaw crusher'),('secondary cone','sec cone cr'),('tertiary cone','Tertiary cone crusher'),('primary class','Vibro acreen'),('scrubber','scrubber'),('washing class','washing screen'),('de-water','DEWAT.SCREEN'),('heater-1','Heter-1'),('heater-2','Heter-2'),('heater-3','Heter-3'),('primary ball','P.B.MILL'),('secondary ball','S.B.mill'),('primary dynamic','P.Dy.seperator'),('secondary dynamic','S.dy.seprator'),('primary bag','P.baghouse'),('secondary bag','s.baghouse'),('primary vibro','P.vibroscreen'),('secondary vibro','S.vibro screen'),('magnetic','magnetic sep.-1'),('eot crane-1','EOT CRANE-1'),('eot crane-2','EOT CRANE-2'),('eot crane-3','EOT CRAN-3'),('compressor-1','compressor-1'),('compressor-2','compressor-2'),('compressor-3','compressor-3'),('compressor-4','compressor-4'),('compressor-5','compressor-4'),('chiller-1','chiller-1'),('chiller-2','chiller-2'),('chiller-3','chiller-3')]
+    n=name.lower(); rules=[('pnematic conveying line','PNEUMATIC CONVEYING LINE'),('pneumatic conveying line','PNEUMATIC CONVEYING LINE'),('jaw','Jaw crusher'),('secondary cone','sec cone cr'),('tertiary cone','Tertiary cone crusher'),('primary class','Vibro screen'),('scrubber','scrubber'),('washing class','washing screen'),('de-water','DEWAT.SCREEN'),('heater-1','Heter-1'),('heater-2','Heter-2'),('heater-3','Heter-3'),('primary ball','P.B.MILL'),('secondary ball','S.B.mill'),('primary dynamic','P.Dy.seperator'),('secondary dynamic','S.dy.seprator'),('primary bag','P.baghouse'),('secondary bag','s.baghouse'),('primary vibro','P.vibroscreen'),('secondary vibro','S.vibro screen'),('magnetic','magnetic sep.-1'),('eot crane-1','EOT CRANE-1'),('eot crane-2','EOT CRANE-2'),('eot crane-3','EOT CRAN-3'),('compressor-1','compressor-1'),('compressor-2','compressor-2'),('compressor-3','compressor-3'),('compressor-4','compressor-4'),('compressor-5','compressor-4'),('chiller-1','chiller-1'),('chiller-2','chiller-2'),('chiller-3','chiller-3')]
     for k,s in rules:
         if k in n:return s
     return ''
