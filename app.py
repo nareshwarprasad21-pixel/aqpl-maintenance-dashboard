@@ -550,6 +550,29 @@ def new_id(kind):
         return f"{prefix}-{max(sequences,default=0)+1:03d}"
     return f"AQPL-{kind}-{now_ist:%Y%m%d-%H%M%S}"
 
+DAILY_LOG_PREFIX='DAILY_WORK_LOG:'
+
+def daily_log_details(remark):
+    """Decode Daily Work Log metadata stored in the existing history remark."""
+    text=str(_value_or(remark,''))
+    if not text.startswith(DAILY_LOG_PREFIX):
+        return {}
+    try:
+        value=json.loads(text[len(DAILY_LOG_PREFIX):])
+        return value if isinstance(value,dict) else {}
+    except (TypeError,ValueError,json.JSONDecodeError):
+        return {}
+
+def daily_log_frame():
+    """Return Daily Work entries as a report-friendly dataframe."""
+    rows=q("select id,job_id,machine_code,start_dt,problem,action_taken,restart_dt,remark from history where maintenance_type='DAILY' order by id desc")
+    records=[]
+    for _,row in rows.iterrows():
+        meta=daily_log_details(row.remark)
+        machine=machine_row(row.machine_code) if row.machine_code in MACH.machine_code.tolist() else None
+        records.append({'ID':row.id,'Job ID':row.job_id,'Date':str(row.start_dt)[:10],'Shift':meta.get('shift',''),'Machine Name':str(machine.machine_name) if machine is not None else '','Machine Code':row.machine_code,'Work Type':meta.get('work_type',''),'Problem / Observation':row.problem,'Work Done':row.action_taken,'Start Time':str(row.start_dt)[11:16],'End Time':str(row.restart_dt)[11:16],'Total Time':meta.get('total_time',''),'Team Members':meta.get('team_members',''),'Spares / Material':meta.get('spares',''),'Machine Status':meta.get('machine_status',''),'Work Status':meta.get('work_status',''),'Pending Action':meta.get('pending_action',''),'Target Date':meta.get('target_date',''),'Remarks':meta.get('remarks','')})
+    return pd.DataFrame(records)
+
 def resequence_daily_bm_job_ids(deleted_job_id):
     """Close gaps in the three-digit BM sequence for the deleted job's date."""
     match=re.fullmatch(r'AQPL-BM-(\d{8})-(\d{3})',str(deleted_job_id))
@@ -624,7 +647,7 @@ top_header()
 TODAY=date.today(); window=TODAY+timedelta(days=7); due=PLAN[PLAN.scheduled_date==TODAY]; overdue=PLAN[PLAN.scheduled_date<TODAY]; hist=q('select * from history'); jobs=q('select * from jobs'); open_bm=jobs[(jobs.job_type=='BM') & (jobs.status!='CLOSED')] if len(jobs) else jobs; open_per=q("select * from permits where status!='CLOSED'"); upcoming=PLAN[(PLAN.scheduled_date>TODAY)&(PLAN.scheduled_date<=window)]
 cols=st.columns(5)
 for col,title,val,cls in zip(cols,['PM Due Today','PM Next 7 Days','Open Breakdowns','Open Permits','Machine Master'],[len(due),len(upcoming),len(open_bm),len(open_per),len(MACH)],['yellow','purple','red','yellow','green']): col.markdown(f'<div class="kpi {cls}"><span class="sub">{title}</span><br><b>{val}</b></div>',unsafe_allow_html=True)
-T=st.tabs(['🏠 Dashboard','📅 PM Plan','✅ PM Check Sheet','🚨 Breakdown','🗂️ Machine History','📋 Breakdown History','🧾 Work Orders & Permits','🔎 Why-Why Analysis','⚙️ Equipment Master','🔗 Checklist Mapping'])
+T=st.tabs(['🏠 Dashboard','📅 PM Plan','✅ PM Check Sheet','🚨 Breakdown','📝 Daily Work Log','🗂️ Machine History','📋 Breakdown History','🧾 Work Orders & Permits','🔎 Why-Why Analysis','⚙️ Equipment Master','🔗 Checklist Mapping'])
 
 with T[0]:
     st.subheader('Today / Upcoming Maintenance')
@@ -807,6 +830,51 @@ with T[3]:
             st.success(f'{jid} saved → Breakdown {start_iso} से {end_iso} तक चला। Total time: {duration_hours} hour(s) {duration_minutes} minute(s). Machine History + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
 
 with T[4]:
+    st.subheader('📝 Daily Maintenance Work Log')
+    st.caption('Maintenance team ने दिनभर किस machine पर क्या काम किया—यहाँ record करें। Entry Equipment Master और Machine History से linked रहेगी।')
+    current_minute=datetime.now(ZoneInfo('Asia/Kolkata')).time().replace(second=0,microsecond=0,tzinfo=None)
+    with st.form('daily_work_log_form',clear_on_submit=True):
+        d1,d2,d3=st.columns([1,1,2]); work_date=d1.date_input('Work Date',value=TODAY); shift=d2.selectbox('Shift',['General','A','B','C']); daily_code=d3.selectbox('Machine',MACH.machine_code.tolist(),format_func=lambda value:f"{machine_row(value).machine_name} | {value}")
+        w1,w2=st.columns(2); work_type=w1.selectbox('Work Type',['Inspection','Preventive Maintenance','Breakdown Maintenance','Lubrication','Adjustment / Alignment','Fabrication / Welding','Improvement / Modification','Electrical Work','General Maintenance']); team_members=w2.text_input('Team Members *',placeholder='Example: Ram Lal, Suresh')
+        problem=w1.text_area('Problem / Observation *',placeholder='क्या समस्या या observation था?'); action=w2.text_area('Work Done / Action Taken *',placeholder='Maintenance team ने क्या काम किया?')
+        t1,t2,t3=st.columns(3); start_time=t1.time_input('Start Time',value=current_minute); end_time=t2.time_input('End Time',value=current_minute); spares=t3.text_input('Spares / Material Used')
+        s1,s2=st.columns(2); machine_status=s1.selectbox('Machine Status',['Running','Stopped','Under Maintenance','Trial Running']); work_status=s2.selectbox('Work Status',['Completed','Pending','In Progress','Temporary Solution'])
+        p1,p2=st.columns([2,1]); pending_action=p1.text_input('Pending Action / Next Work',placeholder='Completed होने पर blank छोड़ें'); target_date=p2.date_input('Target Date',value=TODAY)
+        remarks=st.text_area('Remarks'); save_daily=st.form_submit_button('💾 Save Daily Work Entry',type='primary',use_container_width=True)
+    if save_daily:
+        start_value=datetime.combine(work_date,start_time); end_value=datetime.combine(work_date,end_time)
+        if end_value<start_value:st.error('End Time, Start Time से पहले नहीं हो सकती।')
+        elif not team_members.strip() or not problem.strip() or not action.strip():st.error('Team Members, Problem / Observation और Work Done required हैं।')
+        else:
+            minutes=int((end_value-start_value).total_seconds()//60); hours,mins=divmod(minutes,60); total_time=f'{hours}h {mins}m'; jid=new_id('DL'); mr=machine_row(daily_code)
+            metadata={'shift':shift,'work_type':work_type,'team_members':team_members.strip(),'spares':spares.strip(),'machine_status':machine_status,'work_status':work_status,'pending_action':pending_action.strip(),'target_date':str(target_date) if work_status!='Completed' or pending_action.strip() else '','remarks':remarks.strip(),'total_time':total_time}
+            encoded=DAILY_LOG_PREFIX+json.dumps(metadata,ensure_ascii=False)
+            execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'DL',daily_code,mr.machine_name,mr.location,start_value.isoformat(timespec='minutes'),problem.strip(),work_status.upper(),0,0,end_value.isoformat(timespec='minutes')))
+            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,daily_code,'DAILY',start_value.isoformat(timespec='minutes'),problem.strip(),action.strip(),end_value.isoformat(timespec='minutes'),encoded))
+            st.success(f'{jid} saved for {mr.machine_name}. Total work time: {total_time}.')
+    st.markdown('### 📚 Saved Daily Work'); daily=daily_log_frame()
+    if daily.empty:st.info('अभी कोई Daily Work entry saved नहीं है।')
+    else:
+        f1,f2,f3,f4=st.columns(4); date_filter=f1.date_input('Report Date',value=TODAY,key='daily_report_date'); machine_filter=f2.selectbox('Machine Filter',['ALL']+sorted(daily['Machine Code'].dropna().unique().tolist())); type_filter=f3.selectbox('Work Type Filter',['ALL']+sorted(daily['Work Type'].dropna().unique().tolist())); status_filter=f4.selectbox('Status Filter',['ALL']+sorted(daily['Work Status'].dropna().unique().tolist()))
+        filtered=daily[daily['Date']==str(date_filter)]
+        if machine_filter!='ALL':filtered=filtered[filtered['Machine Code']==machine_filter]
+        if type_filter!='ALL':filtered=filtered[filtered['Work Type']==type_filter]
+        if status_filter!='ALL':filtered=filtered[filtered['Work Status']==status_filter]
+        st.dataframe(filtered.drop(columns=['ID']),use_container_width=True,hide_index=True)
+        st.download_button('⬇️ Download Filtered Daily Work CSV',data=filtered.drop(columns=['ID']).to_csv(index=False).encode('utf-8-sig'),file_name=f'Daily_Maintenance_Work_{date_filter}.csv',mime='text/csv',use_container_width=True)
+        st.markdown('#### ✏️ Edit / Delete Saved Entry'); selected_daily=st.selectbox('Select Daily Work Job ID',daily['Job ID'].tolist(),key='daily_manage_id'); selected_row=daily[daily['Job ID']==selected_daily].iloc[0]
+        with st.form(f'daily_edit_{selected_daily}'):
+            e1,e2=st.columns(2); edit_problem=e1.text_area('Problem / Observation',value=str(selected_row['Problem / Observation'])); edit_action=e2.text_area('Work Done / Action Taken',value=str(selected_row['Work Done']))
+            e3,e4,e5=st.columns(3); edit_team=e3.text_input('Team Members',value=str(selected_row['Team Members'])); statuses=['Completed','Pending','In Progress','Temporary Solution']; edit_status=e4.selectbox('Work Status',statuses,index=statuses.index(selected_row['Work Status']) if selected_row['Work Status'] in statuses else 0); edit_pending=e5.text_input('Pending Action',value=str(selected_row['Pending Action']))
+            edit_remarks=st.text_area('Remarks',value=str(selected_row['Remarks'])); update_daily=st.form_submit_button('💾 Update Entry',type='primary')
+        if update_daily:
+            history_row=q('select remark from history where job_id=?',(selected_daily,)).iloc[0]; meta=daily_log_details(history_row.remark); meta.update({'team_members':edit_team.strip(),'work_status':edit_status,'pending_action':edit_pending.strip(),'remarks':edit_remarks.strip()})
+            execsql('update history set problem=?,action_taken=?,remark=? where job_id=?',(edit_problem.strip(),edit_action.strip(),DAILY_LOG_PREFIX+json.dumps(meta,ensure_ascii=False),selected_daily)); execsql('update jobs set problem=?,status=? where job_id=?',(edit_problem.strip(),edit_status.upper(),selected_daily)); st.success(f'{selected_daily} updated successfully.'); st.rerun()
+        confirm_daily_delete=st.checkbox(f'I confirm: delete {selected_daily}',key=f'daily_delete_confirm_{selected_daily}')
+        if st.button('🗑️ Delete Daily Work Entry',disabled=not confirm_daily_delete,key=f'daily_delete_{selected_daily}'):
+            execsql('delete from history where job_id=?',(selected_daily,)); execsql('delete from jobs where job_id=?',(selected_daily,)); st.success(f'{selected_daily} deleted.'); st.rerun()
+
+with T[5]:
     st.subheader('Machine History Card — PM/BM'); code=st.selectbox('Machine',MACH.machine_code.tolist(),key='histcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}'); activity_type=st.radio('Maintenance Activity Type',['PM','BM'],horizontal=True,key='hist_activity_type'); st.caption('Select PM for Preventive Maintenance or BM for Breakdown Maintenance. You can add a new history entry below.'); st.markdown('### ➕ Fill / Add Maintenance History'); default_jid=new_id(activity_type)
     history_key=re.sub(r'[^A-Za-z0-9_-]+','_',f'{code}_{activity_type}')
     current_history_time=datetime.now().time().replace(second=0,microsecond=0)
@@ -905,7 +973,7 @@ with T[4]:
             st.session_state[delete_flash_key]=f'{delete_job_id} और उसके linked records successfully delete हो गए। बाकी entries सुरक्षित हैं।{renumber_note}'
             st.rerun()
 
-with T[5]:
+with T[6]:
     st.subheader('Breakdown History Card — Editable Activity Log')
     code=st.selectbox('Machine',MACH.machine_code.tolist(),key='bdhcode'); mr=machine_row(code); st.write(f'**{mr.machine_name}** · {code} · {mr.location} · {mr.make_model}')
     st.caption('हर breakdown/maintenance activity को अलग row में दर्ज करें। नीचे + row से जितनी चाहें entries जोड़ सकते हैं।')
@@ -968,7 +1036,7 @@ with T[5]:
         st.download_button('⬇️ Download Breakdown Report PDF',data=breakdown_pdf,file_name=f"Breakdown_Report_{selected_job_id.replace('/','-')}.pdf",mime='application/pdf',key=f'breakdown_pdf_download_{selected_job_id}',type='primary',on_click='ignore')
         st.caption('PDF में machine details, start/end time, total downtime, problem, cause, spares, action, status और signatures शामिल हैं।')
 
-with T[6]:
+with T[7]:
     st.subheader('Work Orders & Safety Permits'); st.markdown('**Open / Recent Work Orders**'); st.dataframe(q('select * from jobs order by opened_at desc limit 100'),use_container_width=True,hide_index=True); st.markdown('**Height / Hot Work Permits**'); permits=q('select * from permits order by id desc'); st.dataframe(permits,use_container_width=True,hide_index=True)
     if len(permits):
         pid=st.selectbox('Edit permit',permits.permit_no.tolist()); r=permits[permits.permit_no==pid].iloc[0]
@@ -976,7 +1044,7 @@ with T[6]:
             sup=st.text_input('Supervisor',value=str(r.supervisor or '')); activity=st.text_input('Activity',value=str(r.activity or '')); start=st.text_input('Start date/time',value=str(r.start_dt or '')); end=st.text_input('End date/time',value=str(r.end_dt or '')); precautions=st.text_area('Additional precautions / concern noticed',value=str(r.precautions or '')); status=st.selectbox('Permit Status',['DRAFT','GRANTED','CLOSED'],index=['DRAFT','GRANTED','CLOSED'].index(r.status if r.status in ['DRAFT','GRANTED','CLOSED'] else 'DRAFT')); save=st.form_submit_button('Save Permit')
         if save:execsql('update permits set supervisor=?,activity=?,start_dt=?,end_dt=?,precautions=?,status=? where permit_no=?',(sup,activity,start,end,precautions,status,pid));st.success('Permit updated.')
 
-with T[7]:
+with T[8]:
     st.subheader('Why-Why Analysis / Root Cause Analysis'); drafts=q('select * from whywhy order by id desc')
     if not len(drafts):st.info('A Why-Why draft is automatically created when a BM Work Order is opened.')
     else:
@@ -985,7 +1053,7 @@ with T[7]:
             why1=st.text_area('Why 1?',value=str(r.why1 or '')); why2=st.text_area('Why 2?',value=str(r.why2 or '')); why3=st.text_area('Why 3?',value=str(r.why3 or '')); why4=st.text_area('Why 4?',value=str(r.why4 or '')); why5=st.text_area('Why 5?',value=str(r.why5 or '')); root=st.text_area('Root Cause',value=str(r.root_cause or '')); corr=st.text_area('Corrective Action',value=str(r.corrective or '')); prev=st.text_area('Preventive Action',value=str(r.preventive or '')); owner=st.text_input('Responsible Person',value=str(r.owner or '')); target=st.date_input('Target Date',value=TODAY); eff=st.text_area('Effectiveness Check',value=str(r.effectiveness or '')); status=st.selectbox('RCA Status',['DRAFT','ACTION OPEN','CLOSED']); save=st.form_submit_button('Save Why-Why Analysis',type='primary')
         if save:execsql('update whywhy set why1=?,why2=?,why3=?,why4=?,why5=?,root_cause=?,corrective=?,preventive=?,owner=?,target_date=?,effectiveness=?,status=? where job_id=?',(why1,why2,why3,why4,why5,root,corr,prev,owner,str(target),eff,status,jid));st.success('Why-Why analysis saved and linked to BM job.')
 
-with T[8]:
+with T[9]:
     st.subheader('Machine / Equipment Master')
     st.caption('Equipment Master अब Supabase में permanently save होता है। Active machines ही PM, Breakdown और History dropdowns में दिखाई देंगी।')
     total_master_machines=len(EQUIPMENT)
@@ -1022,7 +1090,7 @@ with T[8]:
             else:
                 now=datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(timespec='seconds'); execsql('update equipment_master set machine_name=?,make_model=?,capacity=?,location=?,is_active=?,updated_at=? where machine_code=?',(edit_name.strip(),edit_make.strip(),edit_capacity.strip(),edit_location.strip(),bool(edit_active),now,edit_code)); st.success(f'{edit_code} successfully update हो गई।'); st.rerun()
     st.info('Machine Code primary link है, इसलिए existing code edit नहीं किया जा सकता। Machine हटाने के बजाय Active checkbox off करें; उसकी पुरानी history सुरक्षित रहेगी।')
-with T[9]:
+with T[10]:
     st.subheader('Machine → PM Checklist Mapping'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='mapcode'); mr=machine_row(code); current=checklist_for(code); opts=['NOT CONFIGURED']+list(CHECKS.keys()); idx=opts.index(current) if current in opts else 0; sel=st.selectbox('Checklist Template',opts,index=idx)
     if st.button('Save Mapping',type='primary'):
         if sel=='NOT CONFIGURED':execsql('delete from checklist_map where machine_code=?',(code,))
