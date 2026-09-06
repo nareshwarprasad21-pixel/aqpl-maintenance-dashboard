@@ -415,5 +415,23 @@
     "Check for air leakage from the air header",
     "Check RAL for wear and tear",
     "Check RAL chain condition"
+  ],
+  "TRANSFORMER": [
+    "Check transformer cleaning and remove dust, quartz powder and cobwebs",
+    "Check oil leakage from tank, radiator, valves and joints",
+    "Check conservator oil level is within the marked range",
+    "Check silica gel condition and colour",
+    "Check breather oil cup level and cleanliness",
+    "Check HV and LV bushings for dust, cracks, flash marks and oil leakage",
+    "Check cables and terminals for looseness, burn marks and overheating",
+    "Check OTI and WTI temperature readings are within normal limits",
+    "Check for abnormal sound and vibration",
+    "Check cooling radiator cleanliness and unrestricted airflow",
+    "Check cooling fan operation in manual and auto mode, if applicable",
+    "Check transformer body and neutral earthing connections",
+    "Check Buchholz relay for oil leakage, gas or alarm indication",
+    "Check panel for abnormal alarm or trip indication",
+    "Check transformer area for water, vegetation, oil waste and obstruction",
+    "Check fencing, danger board and fire extinguisher condition"
   ]
 }
