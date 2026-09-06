@@ -433,5 +433,22 @@
     "Check panel for abnormal alarm or trip indication",
     "Check transformer area for water, vegetation, oil waste and obstruction",
     "Check fencing, danger board and fire extinguisher condition"
+  ],
+  "GAS YARD HEATER": [
+    "Check gas hose pipes for cracks, cuts, hardness, bulging, heat damage, kinks and leakage",
+    "Check gas hose connectors and couplings for tightness and leakage using an approved leak-detection solution",
+    "Check all ball valves and main isolation valves for smooth operation, correct position and gland leakage",
+    "Check gas pipeline, manifold, bends, flanges and gaskets for leakage, corrosion and physical damage",
+    "Check pipeline supports, clamps, brackets and flange nuts and bolts for looseness, vibration and proper support",
+    "Check pressure gauge reading, zero position, dial visibility, glass condition and calibration validity",
+    "Check gas pressure regulator inlet and outlet pressure for stable operation within the approved range",
+    "Check pressure relief valve condition, seal, corrosion, blockage and valid testing certificate",
+    "Check PRV vent and discharge pipe for damage, blockage and safe upward discharge",
+    "Check line solenoid valve operation, leakage and electrical interlock or trip function",
+    "Check line changeover valve operation, correct position and line identification marking",
+    "Check gas vaporizer or heater vessel for leakage, corrosion, abnormal sound, overheating and secure mounting",
+    "Check heater tank RO water level, cleanliness, leakage and filling arrangement",
+    "Check heater, temperature sensor, controller, thermostat and high-temperature or low-water trip operation",
+    "Check moisture separator and drain valve for condensate, leakage and safe draining; check flameproof panel, cable glands and earthing"
   ]
 }
