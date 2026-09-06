@@ -44,7 +44,7 @@ def load_static(cache_version):
     p=pd.read_csv(os.path.join(DATA,'pm_plan.csv')); p['scheduled_date']=pd.to_datetime(p['scheduled_date']).dt.date
     with open(os.path.join(DATA,'checklists.json'),encoding='utf-8') as f:c=json.load(f)
     return m,p,c
-STATIC_MACH,PLAN,CHECKS=load_static('2026-09-04-vibro-screen-spelling-v3')
+STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-transformer-checklist-v1')
 MACH=STATIC_MACH.copy()
 
 TABLE_COLUMNS={
@@ -640,6 +640,7 @@ def checklist_for(code):
     # Dedicated pneumatic-line checklist must override any stale mapping row.
     if code=='AQPL/P LINE':return 'PNEUMATIC CONVEYING LINE'
     if code=='AQPL/FIBC-A':return 'PACKING MACHINE'
+    if code=='AQPL/TX':return 'TRANSFORMER'
     if code in DUST_COLLECTOR_CODES:return 'DUST COLLECTOR'
     r=q('select sheet_name from checklist_map where machine_code=?',(code,))
     if len(r) and r.iloc[0,0] in CHECKS:return r.iloc[0,0]
