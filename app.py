@@ -44,7 +44,7 @@ def load_static(cache_version):
     p=pd.read_csv(os.path.join(DATA,'pm_plan.csv')); p['scheduled_date']=pd.to_datetime(p['scheduled_date']).dt.date
     with open(os.path.join(DATA,'checklists.json'),encoding='utf-8') as f:c=json.load(f)
     return m,p,c
-STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-transformer-checklist-v1')
+STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-gas-yard-heater-v1')
 MACH=STATIC_MACH.copy()
 
 TABLE_COLUMNS={
@@ -209,6 +209,15 @@ def ensure_dust_collector_equipment():
             execsql('insert into equipment_master(machine_code,machine_name,make_model,capacity,location,is_active,created_at,updated_at) values(?,?,?,?,?,?,?,?)',(code,name,make_model,capacity,location,True,now,now))
 
 ensure_dust_collector_equipment()
+
+def ensure_gas_yard_heater_equipment():
+    """Keep the Gas Yard Heater available in the live Equipment Master."""
+    code='AQPL/GAS Y HEATER'
+    if q('select machine_code from equipment_master where machine_code=?',(code,)).empty:
+        now=datetime.now(ZoneInfo('Asia/Kolkata')).isoformat(timespec='seconds')
+        execsql('insert into equipment_master(machine_code,machine_name,make_model,capacity,location,is_active,created_at,updated_at) values(?,?,?,?,?,?,?,?)',(code,'GAS YARD HEATER','','','GAS YARD',True,now,now))
+
+ensure_gas_yard_heater_equipment()
 
 def repair_vibro_screen_mappings():
     """Repair the earlier misspelled checklist name in saved mappings."""
@@ -679,6 +688,7 @@ def checklist_for(code):
     if code=='AQPL/P LINE':return 'PNEUMATIC CONVEYING LINE'
     if code=='AQPL/FIBC-A':return 'PACKING MACHINE'
     if code=='AQPL/TX':return 'TRANSFORMER'
+    if code=='AQPL/GAS Y HEATER':return 'GAS YARD HEATER'
     if code in DUST_COLLECTOR_CODES:return 'DUST COLLECTOR'
     r=q('select sheet_name from checklist_map where machine_code=?',(code,))
     if len(r) and r.iloc[0,0] in CHECKS:return r.iloc[0,0]
