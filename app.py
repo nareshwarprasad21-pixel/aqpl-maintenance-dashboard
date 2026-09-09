@@ -1058,18 +1058,34 @@ with T[5]:
     st.caption('Maintenance team ने दिनभर किस machine पर क्या काम किया—यहाँ record करें। Equipment Master की machine चुनें या Miscellaneous / Other Machine में नाम खुद लिखें।')
     current_minute=datetime.now(ZoneInfo('Asia/Kolkata')).time().replace(second=0,microsecond=0,tzinfo=None)
     with st.form('daily_work_log_form',clear_on_submit=True):
-        d1,d2,d3=st.columns([1,1,2])
+        d1,d2=st.columns(2)
         work_date=d1.date_input('Work Date',value=TODAY)
         shift=d2.selectbox('Shift',['General','A','B','C'])
-        daily_machine_options=MACH.machine_code.tolist()+['__MISC__']
-        daily_code=d3.selectbox('Machine',daily_machine_options,format_func=lambda value:'➕ Miscellaneous / Other Machine — type manually' if value=='__MISC__' else f"{machine_row(value).machine_name} | {value}")
-        if daily_code=='__MISC__':
+
+        machine_entry_mode=st.radio(
+            'Machine Entry Mode',
+            ['Mapped Machine','Manual / Unmapped Machine'],
+            horizontal=True,
+            help='Manual / Unmapped Machine चुनें जब machine Equipment Master में mapped न हो.'
+        )
+
+        if machine_entry_mode=='Manual / Unmapped Machine':
+            daily_code='__MISC__'
             mx1,mx2,mx3=st.columns([2,1,1])
-            misc_machine_name=mx1.text_input('Machine / Equipment Name *',placeholder='Example: RO Plant, Utility Pump, Welding Machine')
+            misc_machine_name=mx1.text_input(
+                'Machine / Equipment Name *',
+                placeholder='Example: RO Plant, Utility Pump, Welding Machine'
+            )
             misc_machine_code=mx2.text_input('Machine Code (optional)',placeholder='Optional')
             misc_location=mx3.text_input('Location / Section',placeholder='Optional')
             st.caption('यह entry Equipment Master में machine add किए बिना Daily Work Log में save होगी।')
         else:
+            daily_machine_options=MACH.machine_code.tolist()
+            daily_code=st.selectbox(
+                'Machine',
+                daily_machine_options,
+                format_func=lambda value:f"{machine_row(value).machine_name} | {value}"
+            )
             misc_machine_name=''; misc_machine_code=''; misc_location=''
         w1,w2=st.columns(2); work_type=w1.selectbox('Work Type',['Inspection','Preventive Maintenance','Breakdown Maintenance','Lubrication','Adjustment / Alignment','Fabrication / Welding','Improvement / Modification','Electrical Work','General Maintenance']); team_members=w2.text_input('Team Members *',placeholder='Example: Ram Lal, Suresh')
         problem=w1.text_area('Problem / Observation *',placeholder='क्या समस्या या observation था?'); action=w2.text_area('Work Done / Action Taken *',placeholder='Maintenance team ने क्या काम किया?')
