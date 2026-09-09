@@ -948,6 +948,10 @@ with T[4]:
     if plan_entry_related_to=='General / Facility Work':
         facility_options=[
             'Administration Building',
+            'Ball Mill Area',
+            'MIDAS Area',
+            'Tertiary Crusher Area',
+            'Packing Area',
             'Mess',
             'Store',
             'Scrap Yard / Scrap Handling',
