@@ -1,0 +1,46 @@
+name: Add Job Plan Facility Areas
+
+on:
+  push:
+    paths:
+      - '.github/workflows/add-job-plan-facility-areas.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Add plant areas to Daily Job Plan facility dropdown
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text(encoding='utf-8')
+          old="""            'Administration Building',
+            'Mess',"""
+          new="""            'Administration Building',
+            'Ball Mill Area',
+            'MIDAS Area',
+            'Tertiary Crusher Area',
+            'Packing Area',
+            'Mess',"""
+          if old not in s:
+              raise SystemExit('Target facility list not found')
+          s=s.replace(old,new,1)
+          p.write_text(s,encoding='utf-8')
+          PY
+          python -m py_compile app.py
+      - name: Commit facility area options
+        run: |
+          git config user.name "NARESHWAR"
+          git config user.email "nareshwar.prasad21@gmail.com"
+          git add app.py
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m "Add plant areas to Daily Job Plan facility dropdown"
+          git push
