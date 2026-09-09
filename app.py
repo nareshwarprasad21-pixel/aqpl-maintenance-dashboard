@@ -588,7 +588,8 @@ def daily_log_frame():
     for _,row in rows.iterrows():
         meta=daily_log_details(row.remark)
         machine=machine_row(row.machine_code) if row.machine_code in MACH.machine_code.tolist() else None
-        records.append({'ID':row.id,'Job ID':row.job_id,'Date':str(row.start_dt)[:10],'Shift':meta.get('shift',''),'Machine Name':str(machine.machine_name) if machine is not None else '','Machine Code':row.machine_code,'Work Type':meta.get('work_type',''),'Problem / Observation':row.problem,'Work Done':row.action_taken,'Start Time':str(row.start_dt)[11:16],'End Time':str(row.restart_dt)[11:16],'Total Time':meta.get('total_time',''),'Team Members':meta.get('team_members',''),'Spares / Material':meta.get('spares',''),'Machine Status':meta.get('machine_status',''),'Work Status':meta.get('work_status',''),'Pending Action':meta.get('pending_action',''),'Target Date':meta.get('target_date',''),'Remarks':meta.get('remarks','')})
+        machine_name=str(machine.machine_name) if machine is not None else str(meta.get('machine_name',''))
+        records.append({'ID':row.id,'Job ID':row.job_id,'Date':str(row.start_dt)[:10],'Shift':meta.get('shift',''),'Machine Name':machine_name,'Machine Code':row.machine_code,'Work Type':meta.get('work_type',''),'Problem / Observation':row.problem,'Work Done':row.action_taken,'Start Time':str(row.start_dt)[11:16],'End Time':str(row.restart_dt)[11:16],'Total Time':meta.get('total_time',''),'Team Members':meta.get('team_members',''),'Spares / Material':meta.get('spares',''),'Machine Status':meta.get('machine_status',''),'Work Status':meta.get('work_status',''),'Pending Action':meta.get('pending_action',''),'Target Date':meta.get('target_date',''),'Remarks':meta.get('remarks','')})
     return pd.DataFrame(records)
 
 DAILY_JOB_PLAN_PREFIX='DAILY_JOB_PLAN:'
@@ -1014,10 +1015,22 @@ with T[4]:
 
 with T[5]:
     st.subheader('📝 Daily Maintenance Work Log')
-    st.caption('Maintenance team ने दिनभर किस machine पर क्या काम किया—यहाँ record करें। Entry Equipment Master और Machine History से linked रहेगी।')
+    st.caption('Maintenance team ने दिनभर किस machine पर क्या काम किया—यहाँ record करें। Equipment Master की machine चुनें या Miscellaneous / Other Machine में नाम खुद लिखें।')
     current_minute=datetime.now(ZoneInfo('Asia/Kolkata')).time().replace(second=0,microsecond=0,tzinfo=None)
     with st.form('daily_work_log_form',clear_on_submit=True):
-        d1,d2,d3=st.columns([1,1,2]); work_date=d1.date_input('Work Date',value=TODAY); shift=d2.selectbox('Shift',['General','A','B','C']); daily_code=d3.selectbox('Machine',MACH.machine_code.tolist(),format_func=lambda value:f"{machine_row(value).machine_name} | {value}")
+        d1,d2,d3=st.columns([1,1,2])
+        work_date=d1.date_input('Work Date',value=TODAY)
+        shift=d2.selectbox('Shift',['General','A','B','C'])
+        daily_machine_options=MACH.machine_code.tolist()+['__MISC__']
+        daily_code=d3.selectbox('Machine',daily_machine_options,format_func=lambda value:'➕ Miscellaneous / Other Machine — type manually' if value=='__MISC__' else f"{machine_row(value).machine_name} | {value}")
+        if daily_code=='__MISC__':
+            mx1,mx2,mx3=st.columns([2,1,1])
+            misc_machine_name=mx1.text_input('Machine / Equipment Name *',placeholder='Example: RO Plant, Utility Pump, Welding Machine')
+            misc_machine_code=mx2.text_input('Machine Code (optional)',placeholder='Optional')
+            misc_location=mx3.text_input('Location / Section',placeholder='Optional')
+            st.caption('यह entry Equipment Master में machine add किए बिना Daily Work Log में save होगी।')
+        else:
+            misc_machine_name=''; misc_machine_code=''; misc_location=''
         w1,w2=st.columns(2); work_type=w1.selectbox('Work Type',['Inspection','Preventive Maintenance','Breakdown Maintenance','Lubrication','Adjustment / Alignment','Fabrication / Welding','Improvement / Modification','Electrical Work','General Maintenance']); team_members=w2.text_input('Team Members *',placeholder='Example: Ram Lal, Suresh')
         problem=w1.text_area('Problem / Observation *',placeholder='क्या समस्या या observation था?'); action=w2.text_area('Work Done / Action Taken *',placeholder='Maintenance team ने क्या काम किया?')
         t1,t2,t3=st.columns(3); start_time=t1.time_input('Start Time',value=current_minute); end_time=t2.time_input('End Time',value=current_minute); spares=t3.text_input('Spares / Material Used')
@@ -1028,13 +1041,21 @@ with T[5]:
         start_value=datetime.combine(work_date,start_time); end_value=datetime.combine(work_date,end_time)
         if end_value<start_value:st.error('End Time, Start Time से पहले नहीं हो सकती।')
         elif not team_members.strip() or not problem.strip() or not action.strip():st.error('Team Members, Problem / Observation और Work Done required हैं।')
+        elif daily_code=='__MISC__' and not misc_machine_name.strip():st.error('Miscellaneous entry के लिए Machine / Equipment Name required है।')
         else:
-            minutes=int((end_value-start_value).total_seconds()//60); hours,mins=divmod(minutes,60); total_time=f'{hours}h {mins}m'; jid=new_id('DL'); mr=machine_row(daily_code)
-            metadata={'shift':shift,'work_type':work_type,'team_members':team_members.strip(),'spares':spares.strip(),'machine_status':machine_status,'work_status':work_status,'pending_action':pending_action.strip(),'target_date':str(target_date) if work_status!='Completed' or pending_action.strip() else '','remarks':remarks.strip(),'total_time':total_time}
+            minutes=int((end_value-start_value).total_seconds()//60); hours,mins=divmod(minutes,60); total_time=f'{hours}h {mins}m'; jid=new_id('DL')
+            if daily_code=='__MISC__':
+                resolved_name=misc_machine_name.strip()
+                resolved_code=misc_machine_code.strip().upper() or ('MISC/'+re.sub(r'[^A-Za-z0-9]+','-',resolved_name).strip('-').upper()[:40])
+                resolved_location=misc_location.strip() or 'MISCELLANEOUS'
+                is_misc=True
+            else:
+                mr=machine_row(daily_code); resolved_name=str(mr.machine_name); resolved_code=daily_code; resolved_location=str(mr.location); is_misc=False
+            metadata={'shift':shift,'work_type':work_type,'team_members':team_members.strip(),'spares':spares.strip(),'machine_status':machine_status,'work_status':work_status,'pending_action':pending_action.strip(),'target_date':str(target_date) if work_status!='Completed' or pending_action.strip() else '','remarks':remarks.strip(),'total_time':total_time,'machine_name':resolved_name,'machine_code':resolved_code,'location':resolved_location,'miscellaneous':is_misc}
             encoded=DAILY_LOG_PREFIX+json.dumps(metadata,ensure_ascii=False)
-            execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'DL',daily_code,mr.machine_name,mr.location,start_value.isoformat(timespec='minutes'),problem.strip(),work_status.upper(),0,0,end_value.isoformat(timespec='minutes')))
-            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,daily_code,'DAILY',start_value.isoformat(timespec='minutes'),problem.strip(),action.strip(),end_value.isoformat(timespec='minutes'),encoded))
-            st.success(f'{jid} saved for {mr.machine_name}. Total work time: {total_time}.')
+            execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'DL',resolved_code,resolved_name,resolved_location,start_value.isoformat(timespec='minutes'),problem.strip(),work_status.upper(),0,0,end_value.isoformat(timespec='minutes')))
+            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,resolved_code,'DAILY',start_value.isoformat(timespec='minutes'),problem.strip(),action.strip(),end_value.isoformat(timespec='minutes'),encoded))
+            st.success(f'{jid} saved for {resolved_name}. Total work time: {total_time}.')
     st.markdown('### 📚 Saved Daily Work'); daily=daily_log_frame()
     if daily.empty:st.info('अभी कोई Daily Work entry saved नहीं है।')
     else:
