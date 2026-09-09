@@ -931,20 +931,67 @@ with T[3]:
 with T[4]:
     st.subheader('📋 Daily Job Plan / Pending Jobs')
     st.caption('Plant running के दौरान planned maintenance job दर्ज करें, जिम्मेदारी तय करें और completion status track करें।')
-    section_options=sorted([str(x) for x in MACH.location.dropna().unique().tolist() if str(x).strip()])
-    selected_section=st.selectbox('Plant Section *',section_options,key='job_plan_section')
-    section_machines=MACH[MACH.location.astype(str)==selected_section]
-    if section_machines.empty:
-        st.warning('इस section में कोई active machine उपलब्ध नहीं है। Equipment Master में machine location check करें।')
+    plan_entry_related_to=st.radio(
+        'Entry Related To',
+        ['Machine / Equipment','General / Facility Work'],
+        horizontal=True,
+        key='job_plan_entry_related_to',
+        help='General / Facility Work चुनें जब planned job किसी machine से directly related न हो.'
+    )
+    can_create_plan=True
+    selected_plan_machine=None
+    selected_plan_name=''
+    selected_facility_area=''
+    selected_facility_other=''
+
+    if plan_entry_related_to=='General / Facility Work':
+        facility_options=[
+            'Administration Building',
+            'Mess',
+            'Store',
+            'Scrap Yard / Scrap Handling',
+            'Drainage',
+            'Housekeeping / Cleaning',
+            'Painting Work',
+            'Safety Board / Signage Fitting',
+            'Plant Shed / Structural Repair',
+            'Road / Pathway',
+            'Utility Area',
+            'Other'
+        ]
+        selected_facility_area=st.selectbox('Work Area / Location *',facility_options,key='job_plan_facility_area')
+        if selected_facility_area=='Other':
+            selected_facility_other=st.text_input(
+                'Other Work Area / Location *',
+                placeholder='Example: Security Gate, Office Roof, Garden Area',
+                key='job_plan_facility_other'
+            )
+            selected_plan_name=selected_facility_other.strip()
+        else:
+            selected_plan_name=selected_facility_area
+        selected_section=selected_plan_name or 'GENERAL / FACILITY'
+        selected_plan_code='FACILITY/'+re.sub(r'[^A-Za-z0-9]+','-',selected_section).strip('-').upper()[:40]
+        st.info(f'General / Facility Job · Work Area: {selected_section}')
     else:
-        selected_plan_code=st.selectbox('Machine *',section_machines.machine_code.tolist(),format_func=lambda value:f"{machine_row(value).machine_name} | {value}",key='job_plan_machine')
-        selected_plan_machine=machine_row(selected_plan_code)
-        st.info(f'Machine Code: {selected_plan_code} · Section: {selected_plan_machine.location}')
+        section_options=sorted([str(x) for x in MACH.location.dropna().unique().tolist() if str(x).strip()])
+        selected_section=st.selectbox('Plant Section *',section_options,key='job_plan_section')
+        section_machines=MACH[MACH.location.astype(str)==selected_section]
+        if section_machines.empty:
+            st.warning('इस section में कोई active machine उपलब्ध नहीं है। Equipment Master में machine location check करें।')
+            can_create_plan=False
+            selected_plan_code=''
+        else:
+            selected_plan_code=st.selectbox('Machine *',section_machines.machine_code.tolist(),format_func=lambda value:f"{machine_row(value).machine_name} | {value}",key='job_plan_machine')
+            selected_plan_machine=machine_row(selected_plan_code)
+            selected_plan_name=str(selected_plan_machine.machine_name)
+            st.info(f'Machine Code: {selected_plan_code} · Section: {selected_plan_machine.location}')
+
+    if can_create_plan:
         with st.form('daily_job_plan_create',clear_on_submit=True):
             j1,j2=st.columns(2)
             plan_date=j1.date_input('Job Date *',value=TODAY)
-            plan_type=j2.selectbox('Job Type',['Mechanical','Electrical','Instrumentation','Utility','Other'])
-            job_details=st.text_area('Job / Problem Details *',placeholder='Plant running में क्या काम करना है?')
+            plan_type=j2.selectbox('Job Type',['Mechanical','Electrical','Instrumentation','Utility','Facility Maintenance','Civil / Structural Work','Housekeeping / Cleaning','Painting Work','Safety Improvement','Other'])
+            job_details=st.text_area('Job / Problem Details *',placeholder='क्या planned maintenance / facility work करना है?')
             assigned_to=st.text_input('Assigned To *',placeholder='कर्मचारी या maintenance team का नाम')
             f1,f2=st.columns(2)
             shutdown_required=f1.selectbox('Shutdown Required',['No','Yes'])
@@ -953,17 +1000,19 @@ with T[4]:
             plan_remarks=st.text_area('Remarks')
             save_plan=st.form_submit_button('💾 Save Daily Job Plan',type='primary',use_container_width=True)
         if save_plan:
-            if not job_details.strip() or not assigned_to.strip():
+            if plan_entry_related_to=='General / Facility Work' and not selected_plan_name.strip():
+                st.error('General / Facility job के लिए Work Area / Location required है।')
+            elif not job_details.strip() or not assigned_to.strip():
                 st.error('Job / Problem Details और Assigned To required हैं।')
             elif initial_status=='Pending' and not pending_reason.strip():
                 st.error('Pending job के लिए Pending Reason required है।')
             else:
                 plan_jid=new_id('DJP')
                 plan_start=datetime.combine(plan_date,datetime.min.time()).isoformat(timespec='minutes')
-                plan_meta={'plant_section':selected_section,'job_type':plan_type,'assigned_to':assigned_to.strip(),'shutdown_required':shutdown_required,'pending_reason':pending_reason.strip() if initial_status=='Pending' else '','remarks':plan_remarks.strip(),'completion_date':'','work_done':'','spares':'','completed_by':'','machine_status':'','final_remarks':''}
-                execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(plan_jid,'DJP',selected_plan_code,selected_plan_machine.machine_name,selected_section,plan_start,job_details.strip(),initial_status.upper(),int(shutdown_required=='Yes'),0,None))
+                plan_meta={'entry_related_to':plan_entry_related_to,'plant_section':selected_section,'job_type':plan_type,'assigned_to':assigned_to.strip(),'shutdown_required':shutdown_required,'pending_reason':pending_reason.strip() if initial_status=='Pending' else '','remarks':plan_remarks.strip(),'completion_date':'','work_done':'','spares':'','completed_by':'','machine_status':'','final_remarks':''}
+                execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(plan_jid,'DJP',selected_plan_code,selected_plan_name,selected_section,plan_start,job_details.strip(),initial_status.upper(),int(shutdown_required=='Yes'),0,None))
                 execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(plan_jid,selected_plan_code,'JOB_PLAN',plan_start,job_details.strip(),'','',DAILY_JOB_PLAN_PREFIX+json.dumps(plan_meta,ensure_ascii=False)))
-                st.success(f'{plan_jid} saved for {selected_plan_machine.machine_name}.')
+                st.success(f'{plan_jid} saved for {selected_plan_name}.')
                 st.rerun()
 
     st.markdown('### Job Status Summary')
