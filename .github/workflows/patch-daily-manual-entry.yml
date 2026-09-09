@@ -1,9 +1,6 @@
 name: Patch Daily Manual Machine Entry
 
-on:
-  push:
-    paths:
-      - '.github/workflows/patch-daily-manual-entry.yml'
+on: [push]
 
 permissions:
   contents: write
@@ -15,15 +12,13 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-      - name: Patch app.py
-        shell: bash
+      - name: Patch app
         run: |
           python - <<'PY'
           from pathlib import Path
-          p=Path('app.py')
-          s=p.read_text(encoding='utf-8')
-
-          old="""        d1,d2,d3=st.columns([1,1,2])
+          p = Path("app.py")
+          s = p.read_text(encoding="utf-8")
+          old = """        d1,d2,d3=st.columns([1,1,2])
         work_date=d1.date_input('Work Date',value=TODAY)
         shift=d2.selectbox('Shift',['General','A','B','C'])
         daily_machine_options=MACH.machine_code.tolist()+['__MISC__']
@@ -37,7 +32,7 @@ jobs:
         else:
             misc_machine_name=''; misc_machine_code=''; misc_location=''
 """
-          new="""        d1,d2=st.columns([1,1])
+          new = """        d1,d2=st.columns([1,1])
         work_date=d1.date_input('Work Date',value=TODAY)
         shift=d2.selectbox('Shift',['General','A','B','C'])
         machine_entry_mode=st.radio('Machine Entry',['Select from Equipment Master','Enter Machine Name Manually'],horizontal=True,key='daily_machine_entry_mode')
@@ -53,12 +48,10 @@ jobs:
             misc_machine_name=''; misc_machine_code=''; misc_location=''
 """
           if old not in s:
-              raise SystemExit('Daily machine selector target not found')
-          s=s.replace(old,new,1)
-          p.write_text(s,encoding='utf-8')
+              raise SystemExit("target block not found")
+          p.write_text(s.replace(old, new, 1), encoding="utf-8")
           PY
-      - name: Commit patch
-        shell: bash
+      - name: Commit
         run: |
           git config user.name "AQPL Dashboard Bot"
           git config user.email "actions@users.noreply.github.com"
