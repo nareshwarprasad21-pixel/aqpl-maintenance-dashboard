@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/patch-dashboard-home-ui.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -15,87 +16,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
-
-      - name: Upgrade dashboard home interface
-        shell: bash
+      - name: Patch app.py
+        env:
+          HOME_UI_B64: d2l0aCBUWzBdOgogICAgIyBQcm9mZXNzaW9uYWwgQ01NUy1zdHlsZSBob21lIG92ZXJ2aWV3LiBVc2VzIGV4aXN0aW5nIGxpdmUgZGF0YSBvbmx5LgogICAgX2pvYl9zdGF0dXMgPSBqb2JzWydzdGF0dXMnXS5hc3R5cGUoc3RyKS5zdHIudXBwZXIoKSBpZiBsZW4oam9icykgYW5kICdzdGF0dXMnIGluIGpvYnMuY29sdW1ucyBlbHNlIHBkLlNlcmllcyhkdHlwZT1zdHIpCiAgICBwZW5kaW5nX2pvYnMgPSBqb2JzW19qb2Jfc3RhdHVzLmlzaW4oWydQRU5ESU5HJywnUExBTk5FRCcsJ0lOIFBST0dSRVNTJywnT1BFTiddKV0gaWYgbGVuKGpvYnMpIGVsc2Ugam9icwoKICAgIHN0Lm1hcmtkb3duKCcjIyMg8J+TiiBNYWludGVuYW5jZSBPdmVydmlldycpCiAgICBvdjEsb3YyLG92MyxvdjQgPSBzdC5jb2x1bW5zKDQpCiAgICBvdjEubWFya2Rvd24oZic8ZGl2IGNsYXNzPSJrcGkgeWVsbG93Ij48c3BhbiBjbGFzcz0ic3ViIj5Ub2RheSBQTSBEdWU8L3NwYW4+PGJyPjxiPntsZW4oZHVlKX08L2I+PGJyPjxzcGFuIGNsYXNzPSJzdWIiPlNjaGVkdWxlZCB0b2RheTwvc3Bhbj48L2Rpdj4nLHVuc2FmZV9hbGxvd19odG1sPVRydWUpCiAgICBvdjIubWFya2Rvd24oZic8ZGl2IGNsYXNzPSJrcGkgcHVycGxlIj48c3BhbiBjbGFzcz0ic3ViIj5OZXh0IDcgRGF5cyBQTTwvc3Bhbj48YnI+PGI+e2xlbih1cGNvbWluZyl9PC9iPjxicj48c3BhbiBjbGFzcz0ic3ViIj5VcGNvbWluZyBhY3Rpdml0aWVzPC9zcGFuPjwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKICAgIG92My5tYXJrZG93bihmJzxkaXYgY2xhc3M9ImtwaSByZWQiPjxzcGFuIGNsYXNzPSJzdWIiPk9wZW4gQnJlYWtkb3duczwvc3Bhbj48YnI+PGI+e2xlbihvcGVuX2JtKX08L2I+PGJyPjxzcGFuIGNsYXNzPSJzdWIiPk5lZWRzIGF0dGVudGlvbjwvc3Bhbj48L2Rpdj4nLHVuc2FmZV9hbGxvd19odG1sPVRydWUpCiAgICBvdjQubWFya2Rvd24oZic8ZGl2IGNsYXNzPSJrcGkgZ3JlZW4iPjxzcGFuIGNsYXNzPSJzdWIiPlBlbmRpbmcgSm9iczwvc3Bhbj48YnI+PGI+e2xlbihwZW5kaW5nX2pvYnMpfTwvYj48YnI+PHNwYW4gY2xhc3M9InN1YiI+UGxhbm5lZCAvIGluIHByb2dyZXNzPC9zcGFuPjwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKCiAgICBzdC5tYXJrZG93bignIyMjIOKaoSBRdWljayBBY2Nlc3MnKQogICAgcWExLHFhMixxYTMscWE0ID0gc3QuY29sdW1ucyg0KQogICAgcWExLm1hcmtkb3duKCc8ZGl2IGNsYXNzPSJmbG93Ij48Yj7wn5qoIE5ldyBCcmVha2Rvd248L2I+PGJyPjxzcGFuIGNsYXNzPSJzdWIiPk9wZW4gdGhlIEJyZWFrZG93biB0YWIgdG8gcmVjb3JkIGZhaWx1cmUsIGRvd250aW1lIGFuZCBhY3Rpb24uPC9zcGFuPjwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKICAgIHFhMi5tYXJrZG93bignPGRpdiBjbGFzcz0iZmxvdyI+PGI+4pyFIFBNIENoZWNrIFNoZWV0PC9iPjxicj48c3BhbiBjbGFzcz0ic3ViIj5PcGVuIFBNIENoZWNrIFNoZWV0IHRvIGluc3BlY3QsIHNhdmUgYW5kIGdlbmVyYXRlIHJlY29yZHMuPC9zcGFuPjwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKICAgIHFhMy5tYXJrZG93bignPGRpdiBjbGFzcz0iZmxvdyI+PGI+8J+TnSBEYWlseSBXb3JrIExvZzwvYj48YnI+PHNwYW4gY2xhc3M9InN1YiI+UmVjb3JkIG1hY2hpbmUtd2lzZSBtYWludGVuYW5jZSB3b3JrIGNvbXBsZXRlZCBieSB0aGUgdGVhbS48L3NwYW4+PC9kaXY+Jyx1bnNhZmVfYWxsb3dfaHRtbD1UcnVlKQogICAgcWE0Lm1hcmtkb3duKCc8ZGl2IGNsYXNzPSJmbG93Ij48Yj7wn5OLIERhaWx5IEpvYiBQbGFuPC9iPjxicj48c3BhbiBjbGFzcz0ic3ViIj5SZXZpZXcgcGxhbm5lZCwgcGVuZGluZyBhbmQgY29tcGxldGVkIG1haW50ZW5hbmNlIGpvYnMuPC9zcGFuPjwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKCiAgICBsZWZ0X2hvbWUscmlnaHRfaG9tZSA9IHN0LmNvbHVtbnMoWzEuNDUsMV0pCiAgICB3aXRoIGxlZnRfaG9tZToKICAgICAgICBzdC5tYXJrZG93bignIyMjIPCfl5PvuI8gVG9kYXkgLyBVcGNvbWluZyBNYWludGVuYW5jZScpCiAgICAgICAgaWYgbGVuKGR1ZSk6CiAgICAgICAgICAgIHN0Lndhcm5pbmcoZid7bGVuKGR1ZSl9IHByZXZlbnRpdmUgbWFpbnRlbmFuY2UgYWN0aXZpdGllcyBhcmUgZHVlIHRvZGF5LicpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgc3Quc3VjY2VzcygnTm8gUE0gYWN0aXZpdHkgaXMgc2NoZWR1bGVkIGV4YWN0bHkgZm9yIHRvZGF5LicpCiAgICAgICAgaWYgbGVuKHVwY29taW5nKToKICAgICAgICAgICAgbmV4dF9wbSA9IHVwY29taW5nLnNvcnRfdmFsdWVzKCdzY2hlZHVsZWRfZGF0ZScpLmhlYWQoNikuY29weSgpCiAgICAgICAgICAgIHBtX2NvbHMgPSBbYyBmb3IgYyBpbiBbJ21hY2hpbmVfY29kZScsJ21hY2hpbmVfbmFtZScsJ3NjaGVkdWxlZF9kYXRlJywnZnJlcXVlbmN5J10gaWYgYyBpbiBuZXh0X3BtLmNvbHVtbnNdCiAgICAgICAgICAgIHN0LmRhdGFmcmFtZShuZXh0X3BtW3BtX2NvbHNdLHVzZV9jb250YWluZXJfd2lkdGg9VHJ1ZSxoaWRlX2luZGV4PVRydWUpCiAgICAgICAgZWxzZToKICAgICAgICAgICAgc3QuaW5mbygnTm8gcHJldmVudGl2ZSBtYWludGVuYW5jZSBhY3Rpdml0eSBpcyBzY2hlZHVsZWQgaW4gdGhlIG5leHQgNyBkYXlzLicpCgogICAgd2l0aCByaWdodF9ob21lOgogICAgICAgIHN0Lm1hcmtkb3duKCcjIyMg8J+UpyBDdXJyZW50IFdvcmtsb2FkJykKICAgICAgICBzdC5tYXJrZG93bihmJzxkaXYgY2xhc3M9ImZsb3ciPjxiPk9wZW4gQnJlYWtkb3duczoge2xlbihvcGVuX2JtKX08L2I+PGJyPjxzcGFuIGNsYXNzPSJzdWIiPkltbWVkaWF0ZSBjb3JyZWN0aXZlIG1haW50ZW5hbmNlIHdvcmtsb2FkPC9zcGFuPjwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKICAgICAgICBzdC5tYXJrZG93bihmJzxkaXYgY2xhc3M9ImZsb3ciPjxiPlBlbmRpbmcgSm9iczoge2xlbihwZW5kaW5nX2pvYnMpfTwvYj48YnI+PHNwYW4gY2xhc3M9InN1YiI+UGxhbm5lZCAvIHBlbmRpbmcgLyBpbi1wcm9ncmVzcyBqb2JzPC9zcGFuPjwvZGl2PicsdW5zYWZlX2FsbG93X2h0bWw9VHJ1ZSkKICAgICAgICBzdC5tYXJrZG93bihmJzxkaXYgY2xhc3M9ImZsb3ciPjxiPk9wZW4gUGVybWl0czoge2xlbihvcGVuX3Blcil9PC9iPjxicj48c3BhbiBjbGFzcz0ic3ViIj5BY3RpdmUgbWFpbnRlbmFuY2UgcGVybWl0czwvc3Bhbj48L2Rpdj4nLHVuc2FmZV9hbGxvd19odG1sPVRydWUpCiAgICAgICAgc3QubWFya2Rvd24oZic8ZGl2IGNsYXNzPSJmbG93Ij48Yj5NYWNoaW5lIE1hc3Rlcjoge2xlbihNQUNIKX08L2I+PGJyPjxzcGFuIGNsYXNzPSJzdWIiPlJlZ2lzdGVyZWQgZXF1aXBtZW50IGF2YWlsYWJsZSBpbiBzeXN0ZW08L3NwYW4+PC9kaXY+Jyx1bnNhZmVfYWxsb3dfaHRtbD1UcnVlKQoKICAgIHN0Lm1hcmtkb3duKCctLS0nKQogICAgc3Quc3ViaGVhZGVyKCdUb2RheSAvIFVwY29taW5nIE1haW50ZW5hbmNlJykK
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          p = Path('app.py')
-          s = p.read_text(encoding='utf-8')
-
-          marker = """with T[0]:
-    st.subheader('Today / Upcoming Maintenance')
-"""
-
-          replacement = """with T[0]:
-    # Professional CMMS-style home overview. Uses existing live data only.
-    _job_status = jobs['status'].astype(str).str.upper() if len(jobs) and 'status' in jobs.columns else pd.Series(dtype=str)
-    pending_jobs = jobs[_job_status.isin(['PENDING','PLANNED','IN PROGRESS','OPEN'])] if len(jobs) else jobs
-    completed_jobs = jobs[_job_status.isin(['COMPLETED','CLOSED'])] if len(jobs) else jobs
-
-    st.markdown('### 📊 Maintenance Overview')
-    ov1,ov2,ov3,ov4 = st.columns(4)
-    ov1.markdown(f'<div class=\"kpi yellow\"><span class=\"sub\">Today PM Due</span><br><b>{len(due)}</b><br><span class=\"sub\">Scheduled today</span></div>',unsafe_allow_html=True)
-    ov2.markdown(f'<div class=\"kpi purple\"><span class=\"sub\">Next 7 Days PM</span><br><b>{len(upcoming)}</b><br><span class=\"sub\">Upcoming activities</span></div>',unsafe_allow_html=True)
-    ov3.markdown(f'<div class=\"kpi red\"><span class=\"sub\">Open Breakdowns</span><br><b>{len(open_bm)}</b><br><span class=\"sub\">Needs attention</span></div>',unsafe_allow_html=True)
-    ov4.markdown(f'<div class=\"kpi green\"><span class=\"sub\">Pending Jobs</span><br><b>{len(pending_jobs)}</b><br><span class=\"sub\">Planned / in progress</span></div>',unsafe_allow_html=True)
-
-    st.markdown('### ⚡ Quick Access')
-    qa1,qa2,qa3,qa4 = st.columns(4)
-    qa1.markdown('<div class=\"flow\"><b>🚨 New Breakdown</b><br><span class=\"sub\">Open the Breakdown tab to record failure, downtime and action.</span></div>',unsafe_allow_html=True)
-    qa2.markdown('<div class=\"flow\"><b>✅ PM Check Sheet</b><br><span class=\"sub\">Open PM Check Sheet to inspect, save and generate records.</span></div>',unsafe_allow_html=True)
-    qa3.markdown('<div class=\"flow\"><b>📝 Daily Work Log</b><br><span class=\"sub\">Record machine-wise maintenance work completed by the team.</span></div>',unsafe_allow_html=True)
-    qa4.markdown('<div class=\"flow\"><b>📋 Daily Job Plan</b><br><span class=\"sub\">Review planned, pending and completed maintenance jobs.</span></div>',unsafe_allow_html=True)
-
-    left_home,right_home = st.columns([1.45,1])
-    with left_home:
-        st.markdown('### 🗓️ Today / Upcoming Maintenance')
-        if len(due):
-            st.warning(f'{len(due)} preventive maintenance activities are due today.')
-        else:
-            st.success('No PM activity is scheduled exactly for today.')
-        if len(upcoming):
-            next_pm = upcoming.sort_values('scheduled_date').head(6).copy()
-            pm_cols = [c for c in ['machine_code','machine_name','scheduled_date','frequency'] if c in next_pm.columns]
-            st.dataframe(next_pm[pm_cols],use_container_width=True,hide_index=True)
-        else:
-            st.info('No preventive maintenance activity is scheduled in the next 7 days.')
-
-    with right_home:
-        st.markdown('### 🔧 Current Workload')
-        st.markdown(f'<div class=\"flow\"><b>Open Breakdowns: {len(open_bm)}</b><br><span class=\"sub\">Immediate corrective maintenance workload</span></div>',unsafe_allow_html=True)
-        st.markdown(f'<div class=\"flow\"><b>Pending Jobs: {len(pending_jobs)}</b><br><span class=\"sub\">Planned / pending / in-progress jobs</span></div>',unsafe_allow_html=True)
-        st.markdown(f'<div class=\"flow\"><b>Open Permits: {len(open_per)}</b><br><span class=\"sub\">Active maintenance permits</span></div>',unsafe_allow_html=True)
-        st.markdown(f'<div class=\"flow\"><b>Machine Master: {len(MACH)}</b><br><span class=\"sub\">Registered equipment available in system</span></div>',unsafe_allow_html=True)
-
-    st.markdown('---')
-    st.subheader('Today / Upcoming Maintenance')
-"""
-
-          if marker not in s:
-              raise SystemExit('Dashboard marker not found; app.py left unchanged')
-
-          s = s.replace(marker, replacement, 1)
-          p.write_text(s, encoding='utf-8')
-          PY
-
-      - name: Validate Python syntax
-        shell: bash
-        run: python -m py_compile app.py
-
-      - name: Commit dashboard UI upgrade
-        shell: bash
+          python -c "import os,base64,pathlib; p=pathlib.Path('app.py'); s=p.read_text(encoding='utf-8'); marker=\"with T[0]:\\n    st.subheader('Today / Upcoming Maintenance')\\n\"; repl=base64.b64decode(os.environ['HOME_UI_B64']).decode('utf-8'); (None if '### 📊 Maintenance Overview' in s else p.write_text(s.replace(marker,repl,1),encoding='utf-8'))"
+          python -m py_compile app.py
+      - name: Commit UI
         run: |
-          git config user.name "AQPL Dashboard Bot"
-          git config user.email "actions@users.noreply.github.com"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app.py
-          if git diff --cached --quiet; then
-            echo "No changes needed"
-          else
-            git commit -m "Upgrade maintenance dashboard home interface"
-            git push origin HEAD:main
-          fi
-
-# Trigger refresh 2026-09-09
+          git diff --cached --quiet || git commit -m "Upgrade AQPL maintenance dashboard home UI"
+          git push
