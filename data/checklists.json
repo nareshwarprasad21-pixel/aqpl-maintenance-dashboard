@@ -434,6 +434,18 @@
     "Check transformer area for water, vegetation, oil waste and obstruction",
     "Check fencing, danger board and fire extinguisher condition"
   ],
+  "WATER PUMP": [
+    "Check pump casing, flanges, joints and mechanical seal or gland area for water leakage",
+    "Check pump and motor for abnormal noise, vibration and overheating",
+    "Check pump bearing condition and lubrication or greasing",
+    "Check Lovejoy coupling hubs and spider or rubber element for wear, cracks, damage and looseness",
+    "Check pump and motor shaft coupling alignment",
+    "Check pump and motor foundation bolts, mounting bolts and fasteners for tightness",
+    "Check suction and discharge pipelines, flanges, NRV and valves for leakage, blockage and proper operation",
+    "Check pump discharge flow or pressure and observe for cavitation or abnormal running condition",
+    "Check motor current, cable and terminal condition and overheating",
+    "Check Lovejoy coupling guard, safety guards, surrounding cleanliness and overall safe condition"
+  ],
   "GAS YARD HEATER": [
     "Check gas hose pipes for cracks, cuts, hardness, bulging, heat damage, kinks and leakage",
     "Check gas hose connectors and couplings for tightness and leakage using an approved leak-detection solution",
