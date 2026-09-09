@@ -617,6 +617,7 @@ def daily_job_plan_frame():
             'Plant Section':meta.get('plant_section',job.location),
             'Machine Name':job.machine_name,'Machine Code':job.machine_code,
             'Job / Problem Details':job.problem,'Job Type':meta.get('job_type',''),
+            'Priority':meta.get('priority','Medium'),
             'Assigned To':meta.get('assigned_to',''),
             'Shutdown Required':meta.get('shutdown_required','No'),
             'Job Status':str(job.status).title(),
@@ -988,9 +989,10 @@ with T[4]:
 
     if can_create_plan:
         with st.form('daily_job_plan_create',clear_on_submit=True):
-            j1,j2=st.columns(2)
+            j1,j2,j3=st.columns(3)
             plan_date=j1.date_input('Job Date *',value=TODAY)
             plan_type=j2.selectbox('Job Type',['Mechanical','Electrical','Instrumentation','Utility','Facility Maintenance','Civil / Structural Work','Housekeeping / Cleaning','Painting Work','Safety Improvement','Other'])
+            priority=j3.selectbox('Priority *',['Low','Medium','High','Critical'],index=1,help='Critical = operation के लिए high-risk / essential job; table में red highlight होगा.')
             job_details=st.text_area('Job / Problem Details *',placeholder='क्या planned maintenance / facility work करना है?')
             assigned_to=st.text_input('Assigned To *',placeholder='कर्मचारी या maintenance team का नाम')
             f1,f2=st.columns(2)
@@ -1009,7 +1011,7 @@ with T[4]:
             else:
                 plan_jid=new_id('DJP')
                 plan_start=datetime.combine(plan_date,datetime.min.time()).isoformat(timespec='minutes')
-                plan_meta={'entry_related_to':plan_entry_related_to,'plant_section':selected_section,'job_type':plan_type,'assigned_to':assigned_to.strip(),'shutdown_required':shutdown_required,'pending_reason':pending_reason.strip() if initial_status=='Pending' else '','remarks':plan_remarks.strip(),'completion_date':'','work_done':'','spares':'','completed_by':'','machine_status':'','final_remarks':''}
+                plan_meta={'entry_related_to':plan_entry_related_to,'plant_section':selected_section,'job_type':plan_type,'priority':priority,'assigned_to':assigned_to.strip(),'shutdown_required':shutdown_required,'pending_reason':pending_reason.strip() if initial_status=='Pending' else '','remarks':plan_remarks.strip(),'completion_date':'','work_done':'','spares':'','completed_by':'','machine_status':'','final_remarks':''}
                 execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(plan_jid,'DJP',selected_plan_code,selected_plan_name,selected_section,plan_start,job_details.strip(),initial_status.upper(),int(shutdown_required=='Yes'),0,None))
                 execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(plan_jid,selected_plan_code,'JOB_PLAN',plan_start,job_details.strip(),'','',DAILY_JOB_PLAN_PREFIX+json.dumps(plan_meta,ensure_ascii=False)))
                 st.success(f'{plan_jid} saved for {selected_plan_name}.')
@@ -1043,8 +1045,14 @@ with T[4]:
         if plan_section_filter!='ALL':filtered_plans=filtered_plans[filtered_plans['Plant Section']==plan_section_filter]
         if plan_machine_filter!='ALL':filtered_plans=filtered_plans[filtered_plans['Machine Code']==plan_machine_filter]
         if plan_status_filter!='ALL':filtered_plans=filtered_plans[filtered_plans['Job Status']==plan_status_filter]
-        display_columns=['Job ID','Job Date','Plant Section','Machine Name','Machine Code','Job / Problem Details','Job Type','Assigned To','Shutdown Required','Job Status','Pending Reason','Remarks','Completion Date','Work Done','Completed By','Machine Status']
-        st.dataframe(filtered_plans[display_columns],use_container_width=True,hide_index=True)
+        display_columns=['Priority','Job ID','Job Date','Plant Section','Machine Name','Machine Code','Job / Problem Details','Job Type','Assigned To','Shutdown Required','Job Status','Pending Reason','Remarks','Completion Date','Work Done','Completed By','Machine Status']
+        display_plans=filtered_plans[display_columns].copy()
+        display_plans['Priority']=display_plans['Priority'].map({'Critical':'🔴 Critical','High':'🟠 High','Medium':'🟢 Medium','Low':'🔵 Low'}).fillna(display_plans['Priority'])
+        def _highlight_critical_job(row):
+            is_critical=str(row.get('Priority','')).endswith('Critical')
+            return ['background-color:#7f1d1d;color:#ffffff;font-weight:700;' if is_critical else '' for _ in row]
+        st.caption('🔴 Critical jobs operation के लिए high-risk / essential हैं और red highlight में दिखेंगे।')
+        st.dataframe(display_plans.style.apply(_highlight_critical_job,axis=1),use_container_width=True,hide_index=True)
         st.download_button('⬇️ Download Filtered Job Plan CSV',data=filtered_plans.to_csv(index=False).encode('utf-8-sig'),file_name=f'Daily_Job_Plan_{plan_date_filter}.csv',mime='text/csv',use_container_width=True)
 
         st.markdown('### ✏️ Update / Complete Job')
