@@ -21,10 +21,69 @@ jobs:
           src = pathlib.Path('data/pm_plan.csv.gz.b64').read_text().strip()
           pathlib.Path('data/pm_plan.csv').write_bytes(gzip.decompress(base64.b64decode(src)))
           PY
-      - name: Commit materialized CSV
+      - name: Upgrade dashboard home interface
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text(encoding='utf-8')
+          marker="""with T[0]:
+    st.subheader('Today / Upcoming Maintenance')
+"""
+          if '### 📊 Maintenance Overview' not in s:
+              replacement="""with T[0]:
+    # Professional CMMS-style home overview. Uses existing live data only.
+    _job_status = jobs['status'].astype(str).str.upper() if len(jobs) and 'status' in jobs.columns else pd.Series(dtype=str)
+    pending_jobs = jobs[_job_status.isin(['PENDING','PLANNED','IN PROGRESS','OPEN'])] if len(jobs) else jobs
+
+    st.markdown('### 📊 Maintenance Overview')
+    ov1,ov2,ov3,ov4 = st.columns(4)
+    ov1.markdown(f'<div class=\"kpi yellow\"><span class=\"sub\">Today PM Due</span><br><b>{len(due)}</b><br><span class=\"sub\">Scheduled today</span></div>',unsafe_allow_html=True)
+    ov2.markdown(f'<div class=\"kpi purple\"><span class=\"sub\">Next 7 Days PM</span><br><b>{len(upcoming)}</b><br><span class=\"sub\">Upcoming activities</span></div>',unsafe_allow_html=True)
+    ov3.markdown(f'<div class=\"kpi red\"><span class=\"sub\">Open Breakdowns</span><br><b>{len(open_bm)}</b><br><span class=\"sub\">Needs attention</span></div>',unsafe_allow_html=True)
+    ov4.markdown(f'<div class=\"kpi green\"><span class=\"sub\">Pending Jobs</span><br><b>{len(pending_jobs)}</b><br><span class=\"sub\">Planned / in progress</span></div>',unsafe_allow_html=True)
+
+    st.markdown('### ⚡ Quick Access')
+    qa1,qa2,qa3,qa4 = st.columns(4)
+    qa1.markdown('<div class=\"flow\"><b>🚨 New Breakdown</b><br><span class=\"sub\">Open the Breakdown tab to record failure, downtime and action.</span></div>',unsafe_allow_html=True)
+    qa2.markdown('<div class=\"flow\"><b>✅ PM Check Sheet</b><br><span class=\"sub\">Open PM Check Sheet to inspect, save and generate records.</span></div>',unsafe_allow_html=True)
+    qa3.markdown('<div class=\"flow\"><b>📝 Daily Work Log</b><br><span class=\"sub\">Record machine-wise maintenance work completed by the team.</span></div>',unsafe_allow_html=True)
+    qa4.markdown('<div class=\"flow\"><b>📋 Daily Job Plan</b><br><span class=\"sub\">Review planned, pending and completed maintenance jobs.</span></div>',unsafe_allow_html=True)
+
+    left_home,right_home = st.columns([1.45,1])
+    with left_home:
+        st.markdown('### 🗓️ Today / Upcoming Maintenance')
+        if len(due):
+            st.warning(f'{len(due)} preventive maintenance activities are due today.')
+        else:
+            st.success('No PM activity is scheduled exactly for today.')
+        if len(upcoming):
+            next_pm = upcoming.sort_values('scheduled_date').head(6).copy()
+            pm_cols = [c for c in ['machine_code','machine_name','scheduled_date','frequency'] if c in next_pm.columns]
+            st.dataframe(next_pm[pm_cols],use_container_width=True,hide_index=True)
+        else:
+            st.info('No preventive maintenance activity is scheduled in the next 7 days.')
+
+    with right_home:
+        st.markdown('### 🔧 Current Workload')
+        st.markdown(f'<div class=\"flow\"><b>Open Breakdowns: {len(open_bm)}</b><br><span class=\"sub\">Immediate corrective maintenance workload</span></div>',unsafe_allow_html=True)
+        st.markdown(f'<div class=\"flow\"><b>Pending Jobs: {len(pending_jobs)}</b><br><span class=\"sub\">Planned / pending / in-progress jobs</span></div>',unsafe_allow_html=True)
+        st.markdown(f'<div class=\"flow\"><b>Open Permits: {len(open_per)}</b><br><span class=\"sub\">Active maintenance permits</span></div>',unsafe_allow_html=True)
+        st.markdown(f'<div class=\"flow\"><b>Machine Master: {len(MACH)}</b><br><span class=\"sub\">Registered equipment available in system</span></div>',unsafe_allow_html=True)
+
+    st.markdown('---')
+    st.subheader('Today / Upcoming Maintenance')
+"""
+              if marker not in s:
+                  raise SystemExit('Dashboard home marker not found')
+              s=s.replace(marker,replacement,1)
+              p.write_text(s,encoding='utf-8')
+          PY
+          python -m py_compile app.py
+      - name: Commit materialized CSV and dashboard UI
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/pm_plan.csv
-          git diff --cached --quiet || git commit -m "Materialize AQPL PM plan CSV"
+          git add data/pm_plan.csv app.py
+          git diff --cached --quiet || git commit -m "Upgrade AQPL maintenance dashboard home UI"
           git push
