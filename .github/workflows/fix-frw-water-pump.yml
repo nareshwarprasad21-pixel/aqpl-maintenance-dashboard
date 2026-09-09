@@ -1,0 +1,63 @@
+name: Fix FRW Water Pump Checklist
+
+on:
+  push:
+    paths:
+      - '.github/workflows/fix-frw-water-pump.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch app.py
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('app.py')
+          s=p.read_text(encoding='utf-8')
+
+          old="STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-pm-plan-2026-27-v2')\nMACH=STATIC_MACH.copy()"
+          new="""STATIC_MACH,PLAN,CHECKS=load_static('2026-09-09-water-pump-v1')
+# Direct fallback keeps the Water Pump template available even if an older
+# Streamlit data cache survives a redeploy.
+CHECKS['WATER PUMP']=[
+    'Check pump casing, flanges, joints and mechanical seal or gland area for water leakage',
+    'Check pump and motor for abnormal noise, vibration and overheating',
+    'Check pump bearing condition and lubrication or greasing',
+    'Check Lovejoy coupling hubs and spider or rubber element for wear, cracks, damage and looseness',
+    'Check pump and motor shaft coupling alignment',
+    'Check pump and motor foundation bolts, mounting bolts and fasteners for tightness',
+    'Check suction and discharge pipelines, flanges, NRV and valves for leakage, blockage and proper operation',
+    'Check pump discharge flow or pressure and observe for cavitation or abnormal running condition',
+    'Check motor current, cable and terminal condition and overheating',
+    'Check Lovejoy coupling guard, safety guards, surrounding cleanliness and overall safe condition'
+]
+MACH=STATIC_MACH.copy()"""
+          if old not in s:
+              raise SystemExit('load_static target not found')
+          s=s.replace(old,new,1)
+
+          old2="def checklist_for(code):\n    # Dedicated pneumatic-line checklist must override any stale mapping row.\n    if code=='AQPL/P LINE':return 'PNEUMATIC CONVEYING LINE'"
+          new2="def checklist_for(code):\n    # Dedicated machine templates override stale or missing mapping rows.\n    if code=='AQPL/FRW PUMP':return 'WATER PUMP'\n    if code=='AQPL/P LINE':return 'PNEUMATIC CONVEYING LINE'"
+          if old2 not in s:
+              raise SystemExit('checklist_for target not found')
+          s=s.replace(old2,new2,1)
+
+          p.write_text(s,encoding='utf-8')
+          PY
+      - name: Commit fix
+        shell: bash
+        run: |
+          git config user.name "AQPL Dashboard Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add app.py
+          git commit -m "Fix FRW pump PM checklist and mapping" || exit 0
+          git push origin HEAD:main
