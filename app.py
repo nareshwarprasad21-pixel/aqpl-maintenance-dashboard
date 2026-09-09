@@ -1057,17 +1057,18 @@ with T[5]:
     st.subheader('📝 Daily Maintenance Work Log')
     st.caption('Maintenance team ने दिनभर किस machine पर क्या काम किया—यहाँ record करें। Equipment Master की machine चुनें या Miscellaneous / Other Machine में नाम खुद लिखें।')
     current_minute=datetime.now(ZoneInfo('Asia/Kolkata')).time().replace(second=0,microsecond=0,tzinfo=None)
+    machine_entry_mode=st.radio(
+        'Machine Entry Mode',
+        ['Mapped Machine','Manual / Unmapped Machine'],
+        horizontal=True,
+        key='daily_machine_entry_mode',
+        help='Manual / Unmapped Machine चुनें जब machine Equipment Master में mapped न हो.'
+    )
+
     with st.form('daily_work_log_form',clear_on_submit=True):
         d1,d2=st.columns(2)
         work_date=d1.date_input('Work Date',value=TODAY)
         shift=d2.selectbox('Shift',['General','A','B','C'])
-
-        machine_entry_mode=st.radio(
-            'Machine Entry Mode',
-            ['Mapped Machine','Manual / Unmapped Machine'],
-            horizontal=True,
-            help='Manual / Unmapped Machine चुनें जब machine Equipment Master में mapped न हो.'
-        )
 
         if machine_entry_mode=='Manual / Unmapped Machine':
             daily_code='__MISC__'
