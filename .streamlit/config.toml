@@ -3,3 +3,8 @@ magicEnabled = false
 
 [theme]
 base = "dark"
+primaryColor = "#5B43D6"
+backgroundColor = "#07111F"
+secondaryBackgroundColor = "#101F35"
+textColor = "#EEF4FF"
+font = "sans serif"
