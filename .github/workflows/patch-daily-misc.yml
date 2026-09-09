@@ -1,0 +1,57 @@
+name: Patch Daily Misc Machine
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-daily-misc.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Patch app.py
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('app.py')
+          s = p.read_text(encoding='utf-8')
+
+          old = """        machine=machine_row(row.machine_code) if row.machine_code in MACH.machine_code.tolist() else None\n        records.append({'ID':row.id,'Job ID':row.job_id,'Date':str(row.start_dt)[:10],'Shift':meta.get('shift',''),'Machine Name':str(machine.machine_name) if machine is not None else '','Machine Code':row.machine_code,'Work Type':meta.get('work_type',''),'Problem / Observation':row.problem,'Work Done':row.action_taken,'Start Time':str(row.start_dt)[11:16],'End Time':str(row.restart_dt)[11:16],'Total Time':meta.get('total_time',''),'Team Members':meta.get('team_members',''),'Spares / Material':meta.get('spares',''),'Machine Status':meta.get('machine_status',''),'Work Status':meta.get('work_status',''),'Pending Action':meta.get('pending_action',''),'Target Date':meta.get('target_date',''),'Remarks':meta.get('remarks','')})\n"""
+          new = """        machine=machine_row(row.machine_code) if row.machine_code in MACH.machine_code.tolist() else None\n        machine_name=str(machine.machine_name) if machine is not None else str(meta.get('machine_name',''))\n        records.append({'ID':row.id,'Job ID':row.job_id,'Date':str(row.start_dt)[:10],'Shift':meta.get('shift',''),'Machine Name':machine_name,'Machine Code':row.machine_code,'Work Type':meta.get('work_type',''),'Problem / Observation':row.problem,'Work Done':row.action_taken,'Start Time':str(row.start_dt)[11:16],'End Time':str(row.restart_dt)[11:16],'Total Time':meta.get('total_time',''),'Team Members':meta.get('team_members',''),'Spares / Material':meta.get('spares',''),'Machine Status':meta.get('machine_status',''),'Work Status':meta.get('work_status',''),'Pending Action':meta.get('pending_action',''),'Target Date':meta.get('target_date',''),'Remarks':meta.get('remarks','')})\n"""
+          if old in s:
+              s = s.replace(old, new, 1)
+
+          old = """    st.caption('Maintenance team ने दिनभर किस machine पर क्या काम किया—यहाँ record करें। Entry Equipment Master और Machine History से linked रहेगी।')\n    current_minute=datetime.now(ZoneInfo('Asia/Kolkata')).time().replace(second=0,microsecond=0,tzinfo=None)\n    with st.form('daily_work_log_form',clear_on_submit=True):\n        d1,d2,d3=st.columns([1,1,2]); work_date=d1.date_input('Work Date',value=TODAY); shift=d2.selectbox('Shift',['General','A','B','C']); daily_code=d3.selectbox('Machine',MACH.machine_code.tolist(),format_func=lambda value:f\"{machine_row(value).machine_name} | {value}\")\n"""
+          new = """    st.caption('Maintenance team ने दिनभर किस machine पर क्या काम किया—यहाँ record करें। Equipment Master की machine चुनें या Miscellaneous / Other Machine में नाम खुद लिखें।')\n    current_minute=datetime.now(ZoneInfo('Asia/Kolkata')).time().replace(second=0,microsecond=0,tzinfo=None)\n    with st.form('daily_work_log_form',clear_on_submit=True):\n        d1,d2,d3=st.columns([1,1,2])\n        work_date=d1.date_input('Work Date',value=TODAY)\n        shift=d2.selectbox('Shift',['General','A','B','C'])\n        daily_machine_options=MACH.machine_code.tolist()+['__MISC__']\n        daily_code=d3.selectbox('Machine',daily_machine_options,format_func=lambda value:'➕ Miscellaneous / Other Machine — type manually' if value=='__MISC__' else f\"{machine_row(value).machine_name} | {value}\")\n        if daily_code=='__MISC__':\n            mx1,mx2,mx3=st.columns([2,1,1])\n            misc_machine_name=mx1.text_input('Machine / Equipment Name *',placeholder='Example: RO Plant, Utility Pump, Welding Machine')\n            misc_machine_code=mx2.text_input('Machine Code (optional)',placeholder='Optional')\n            misc_location=mx3.text_input('Location / Section',placeholder='Optional')\n            st.caption('यह entry Equipment Master में machine add किए बिना Daily Work Log में save होगी।')\n        else:\n            misc_machine_name=''; misc_machine_code=''; misc_location=''\n"""
+          if old in s:
+              s = s.replace(old, new, 1)
+
+          old = """        elif not team_members.strip() or not problem.strip() or not action.strip():st.error('Team Members, Problem / Observation और Work Done required हैं।')\n        else:\n            minutes=int((end_value-start_value).total_seconds()//60); hours,mins=divmod(minutes,60); total_time=f'{hours}h {mins}m'; jid=new_id('DL'); mr=machine_row(daily_code)\n            metadata={'shift':shift,'work_type':work_type,'team_members':team_members.strip(),'spares':spares.strip(),'machine_status':machine_status,'work_status':work_status,'pending_action':pending_action.strip(),'target_date':str(target_date) if work_status!='Completed' or pending_action.strip() else '','remarks':remarks.strip(),'total_time':total_time}\n            encoded=DAILY_LOG_PREFIX+json.dumps(metadata,ensure_ascii=False)\n            execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'DL',daily_code,mr.machine_name,mr.location,start_value.isoformat(timespec='minutes'),problem.strip(),work_status.upper(),0,0,end_value.isoformat(timespec='minutes')))\n            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,daily_code,'DAILY',start_value.isoformat(timespec='minutes'),problem.strip(),action.strip(),end_value.isoformat(timespec='minutes'),encoded))\n            st.success(f'{jid} saved for {mr.machine_name}. Total work time: {total_time}.')\n"""
+          new = """        elif not team_members.strip() or not problem.strip() or not action.strip():st.error('Team Members, Problem / Observation और Work Done required हैं।')\n        elif daily_code=='__MISC__' and not misc_machine_name.strip():st.error('Miscellaneous entry के लिए Machine / Equipment Name required है।')\n        else:\n            minutes=int((end_value-start_value).total_seconds()//60); hours,mins=divmod(minutes,60); total_time=f'{hours}h {mins}m'; jid=new_id('DL')\n            if daily_code=='__MISC__':\n                resolved_name=misc_machine_name.strip()\n                resolved_code=misc_machine_code.strip().upper() or ('MISC/'+re.sub(r'[^A-Za-z0-9]+','-',resolved_name).strip('-').upper()[:40])\n                resolved_location=misc_location.strip() or 'MISCELLANEOUS'\n                is_misc=True\n            else:\n                mr=machine_row(daily_code); resolved_name=str(mr.machine_name); resolved_code=daily_code; resolved_location=str(mr.location); is_misc=False\n            metadata={'shift':shift,'work_type':work_type,'team_members':team_members.strip(),'spares':spares.strip(),'machine_status':machine_status,'work_status':work_status,'pending_action':pending_action.strip(),'target_date':str(target_date) if work_status!='Completed' or pending_action.strip() else '','remarks':remarks.strip(),'total_time':total_time,'machine_name':resolved_name,'machine_code':resolved_code,'location':resolved_location,'miscellaneous':is_misc}\n            encoded=DAILY_LOG_PREFIX+json.dumps(metadata,ensure_ascii=False)\n            execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'DL',resolved_code,resolved_name,resolved_location,start_value.isoformat(timespec='minutes'),problem.strip(),work_status.upper(),0,0,end_value.isoformat(timespec='minutes')))\n            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,resolved_code,'DAILY',start_value.isoformat(timespec='minutes'),problem.strip(),action.strip(),end_value.isoformat(timespec='minutes'),encoded))\n            st.success(f'{jid} saved for {resolved_name}. Total work time: {total_time}.')\n"""
+          if old in s:
+              s = s.replace(old, new, 1)
+
+          marker = "Miscellaneous / Other Machine — type manually"
+          if marker not in s:
+              raise SystemExit('Patch target not found; app.py left unchanged')
+          p.write_text(s, encoding='utf-8')
+          PY
+      - name: Commit patch
+        shell: bash
+        run: |
+          git config user.name "AQPL Dashboard Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add app.py
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+          else
+            git commit -m "Add miscellaneous machine entry to daily work log"
+            git push origin HEAD:main
+          fi
