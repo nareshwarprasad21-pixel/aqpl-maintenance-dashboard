@@ -1,12 +1,100 @@
 """AQPL Maintenance Dashboard entrypoint.
 
-Stability-first entrypoint: load the proven dashboard directly from legacy_app,
-then add a lightweight Breakdown Hours Summary in the sidebar.  This avoids
-patching Streamlit internals (especially ``st.tabs``), which can make mobile
-sessions unreliable during startup/reconnect.
+Stability-first entrypoint: keep the proven dashboard in ``legacy_app.py`` and
+add only small, targeted mobile-friendly helpers here.
 """
 
-from legacy_app import *  # noqa: F401,F403
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+
+# Mobile-friendly rendering for the Home tab's Today / Upcoming PM table.
+# The legacy dashboard passes a dataframe containing a Status column with
+# DUE TODAY / UPCOMING values.  On narrow portrait screens the first rows can
+# be easy to miss inside Streamlit's scrollable dataframe, so due-today jobs
+# are rendered as simple cards with the date first and upcoming jobs remain in
+# a normal dataframe.  Other dataframes are untouched.
+_ORIGINAL_DATAFRAME = st.dataframe
+
+
+def _mobile_friendly_dataframe(data=None, *args, **kwargs):
+    try:
+        is_pm_home_table = (
+            isinstance(data, pd.DataFrame)
+            and "Status" in data.columns
+            and "scheduled_date" in data.columns
+            and data["Status"].astype(str).isin(["DUE TODAY", "UPCOMING"]).any()
+        )
+    except Exception:
+        is_pm_home_table = False
+
+    if not is_pm_home_table:
+        return _ORIGINAL_DATAFRAME(data, *args, **kwargs)
+
+    frame = data.copy()
+    due = frame[frame["Status"].astype(str) == "DUE TODAY"].copy()
+    upcoming = frame[frame["Status"].astype(str) == "UPCOMING"].copy()
+
+    if not due.empty:
+        st.markdown("#### 🔴 Due Today")
+        for _, row in due.iterrows():
+            raw_date = row.get("scheduled_date", "")
+            try:
+                date_text = pd.to_datetime(raw_date).strftime("%d %b %Y")
+            except Exception:
+                date_text = str(raw_date)
+
+            name = ""
+            for col in ["machine_name", "Machine Name", "machine", "Machine"]:
+                if col in due.columns and pd.notna(row.get(col)):
+                    name = str(row.get(col)).strip()
+                    if name:
+                        break
+
+            code = ""
+            for col in ["machine_code", "Machine Code", "code", "Code"]:
+                if col in due.columns and pd.notna(row.get(col)):
+                    code = str(row.get(col)).strip()
+                    if code:
+                        break
+
+            frequency = ""
+            for col in ["frequency", "Frequency"]:
+                if col in due.columns and pd.notna(row.get(col)):
+                    frequency = str(row.get(col)).strip()
+                    if frequency:
+                        break
+
+            title = f"📅 {date_text}"
+            if name:
+                title += f" — {name}"
+            details = " · ".join(x for x in [code, frequency] if x)
+            if details:
+                st.markdown(f"**{title}**  \n{details}")
+            else:
+                st.markdown(f"**{title}**")
+
+    if upcoming.empty:
+        return None
+
+    st.markdown("#### 📆 Upcoming")
+    preferred = [c for c in ["scheduled_date", "machine_name", "machine_code", "frequency", "Status"] if c in upcoming.columns]
+    remaining = [c for c in upcoming.columns if c not in preferred]
+    upcoming = upcoming[preferred + remaining]
+    return _ORIGINAL_DATAFRAME(upcoming, *args, **kwargs)
+
+
+st.dataframe = _mobile_friendly_dataframe
+
+# Load the full maintenance dashboard.
+from legacy_app import *  # noqa: F401,F403,E402
+
+
+# Restore the native dataframe function after legacy_app has rendered so later
+# helpers do not unexpectedly inherit the targeted Home-tab behavior.
+st.dataframe = _ORIGINAL_DATAFRAME
 
 
 def _render_breakdown_hours_sidebar():
