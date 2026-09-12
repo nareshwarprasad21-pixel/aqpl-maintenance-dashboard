@@ -4,9 +4,7 @@ from pathlib import Path
 DASHBOARD_SCRIPT = Path(__file__).with_name("legacy_app.py")
 source = DASHBOARD_SCRIPT.read_text(encoding="utf-8")
 
-# ---------------------------------------------------------------------------
 # 1) PM Action / Remark saved sentence suggestions
-# ---------------------------------------------------------------------------
 old_block = """        results=[]
         with st.form(f'pmform_{pm_key}'):
             h1,h2,h3,h4,h5=st.columns([0.7,4.6,2,3.4,3.4])
@@ -47,9 +45,7 @@ new_block = """        pm_suggestion_history=q('select check_point,action,remark
 """
 if old_block in source: source=source.replace(old_block,new_block,1)
 
-# ---------------------------------------------------------------------------
 # 2) Daily Work Log mapped machine starts blank
-# ---------------------------------------------------------------------------
 old_daily="""            daily_machine_options=MACH.machine_code.tolist()
             daily_code=st.selectbox(
                 'Machine',
@@ -72,9 +68,7 @@ new_validation="""        elif daily_code is None:st.error('Please select a Mach
 """
 if old_validation in source: source=source.replace(old_validation,new_validation,1)
 
-# ---------------------------------------------------------------------------
 # 3) Date-wise history search + Excel/PDF download
-# ---------------------------------------------------------------------------
 history_helper=r'''
 def _aqpl_history_source(kind):
     if kind=='PM': return q('select * from pm_checks order by id desc'),'created_at','Preventive Maintenance History'
@@ -153,20 +147,16 @@ def render_datewise_history(kind,key_prefix,default_machine=None):
         d2.download_button('📄 Download PDF',_aqpl_pdf_bytes(display,title,f'Date Range: {from_date:%d-%m-%Y} to {to_date:%d-%m-%Y}'),base+'.pdf','application/pdf',key=f'{key_prefix}_pdf')
 '''
 
-# ---------------------------------------------------------------------------
-# 4) Tabs: use session-state value only as DEFAULT. Do not bind the tab widget
-#    to that key, so Quick Access can safely update it after tabs are rendered.
-# ---------------------------------------------------------------------------
+# 4) Tabs: query-param driven default so Quick Access works after full reload.
 tabs_anchor="T=st.tabs(['🏠 Dashboard','📅 PM Plan','✅ PM Check Sheet','🚨 Breakdown','📋 Daily Job Plan','📝 Daily Work Log','🗂️ Machine History','📋 Breakdown History','🧾 Work Orders & Permits','🔎 Why-Why Analysis','⚙️ Equipment Master','🔗 Checklist Mapping'])"
 tabs_repl=r"""_AQPL_TABS=['🏠 Dashboard','📅 PM Plan','✅ PM Check Sheet','🚨 Breakdown','📋 Daily Job Plan','📝 Daily Work Log','🗂️ Machine History','📋 Breakdown History','🧾 Work Orders & Permits','🔎 Why-Why Analysis','⚙️ Equipment Master','🔗 Checklist Mapping']
-_aqpl_default_tab=st.session_state.get('aqpl_main_tab','🏠 Dashboard')
-if _aqpl_default_tab not in _AQPL_TABS:_aqpl_default_tab='🏠 Dashboard'
+_AQPL_TAB_LINKS={'dashboard':'🏠 Dashboard','pm':'✅ PM Check Sheet','breakdown':'🚨 Breakdown','daily-plan':'📋 Daily Job Plan','daily-work':'📝 Daily Work Log'}
+_aqpl_requested=str(st.query_params.get('tab','dashboard')).strip().lower()
+_aqpl_default_tab=_AQPL_TAB_LINKS.get(_aqpl_requested,'🏠 Dashboard')
 T=st.tabs(_AQPL_TABS,default=_aqpl_default_tab)"""
 if tabs_anchor in source: source=source.replace(tabs_anchor,history_helper+'\n'+tabs_repl,1)
 
-# ---------------------------------------------------------------------------
 # 5) Add date-wise history UI to requested tabs
-# ---------------------------------------------------------------------------
 replacements=[
 ("""with T[2]:
     st.subheader('Preventive Maintenance Check Sheet')
@@ -204,9 +194,8 @@ replacements=[
 for old,new in replacements:
     if old in source: source=source.replace(old,new,1)
 
-# ---------------------------------------------------------------------------
-# 6) Clickable Quick Access cards
-# ---------------------------------------------------------------------------
+# 6) Quick Access cards as real same-page links. The URL change forces a clean
+# page load, so the requested tab can reliably become the default active tab.
 quick_old="""    st.markdown('### ⚡ Quick Access')
     qa1,qa2,qa3,qa4 = st.columns(4)
     qa1.markdown('<div class=\"flow\"><b>🚨 New Breakdown</b><br><span class=\"sub\">Open the Breakdown tab to record failure, downtime and action.</span></div>',unsafe_allow_html=True)
@@ -216,19 +205,20 @@ quick_old="""    st.markdown('### ⚡ Quick Access')
 """
 quick_new=r"""    st.markdown('### ⚡ Quick Access')
     st.markdown('''<style>
-    .st-key-aqpl_quick_access div[data-testid="stButton"] button{min-height:104px!important;text-align:left!important;justify-content:flex-start!important;border:1px solid #2b4564!important;border-radius:12px!important;padding:14px 16px!important;white-space:normal!important;font-size:15px!important;line-height:1.35!important}
-    .st-key-aqpl_quick_access div[data-testid="stButton"] button:hover{border-color:#6949e8!important;box-shadow:0 0 0 1px #6949e8 inset!important}
-    </style>''',unsafe_allow_html=True)
-    with st.container(key='aqpl_quick_access'):
-        qa1,qa2,qa3,qa4=st.columns(4)
-        if qa1.button('🚨 New Breakdown\n\nRecord failure, downtime and action',use_container_width=True,key='qa_breakdown'):
-            st.session_state['aqpl_main_tab']='🚨 Breakdown'; st.rerun()
-        if qa2.button('✅ PM Check Sheet\n\nInspect, save and generate PM records',use_container_width=True,key='qa_pm'):
-            st.session_state['aqpl_main_tab']='✅ PM Check Sheet'; st.rerun()
-        if qa3.button('📝 Daily Work Log\n\nRecord machine-wise completed maintenance work',use_container_width=True,key='qa_daily_work'):
-            st.session_state['aqpl_main_tab']='📝 Daily Work Log'; st.rerun()
-        if qa4.button('📋 Daily Job Plan\n\nReview planned, pending and completed jobs',use_container_width=True,key='qa_daily_plan'):
-            st.session_state['aqpl_main_tab']='📋 Daily Job Plan'; st.rerun()
+    .aqpl-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:.4rem 0 1rem}
+    .aqpl-quick-card{display:block;min-height:104px;border:1px solid #2b4564;border-radius:12px;padding:14px 16px;background:#10223a;color:#f4f7fb!important;text-decoration:none!important;box-sizing:border-box}
+    .aqpl-quick-card:hover{border-color:#6949e8;box-shadow:0 0 0 1px #6949e8 inset;background:#132944}
+    .aqpl-quick-title{font-weight:700;font-size:15px;margin-bottom:8px}
+    .aqpl-quick-desc{font-size:14px;line-height:1.45;color:#9ec2f4}
+    @media(max-width:850px){.aqpl-quick-grid{grid-template-columns:1fr 1fr}}
+    @media(max-width:520px){.aqpl-quick-grid{grid-template-columns:1fr}}
+    </style>
+    <div class="aqpl-quick-grid">
+      <a class="aqpl-quick-card" href="?tab=breakdown" target="_self"><div class="aqpl-quick-title">🚨 New Breakdown</div><div class="aqpl-quick-desc">Record failure, downtime and action.</div></a>
+      <a class="aqpl-quick-card" href="?tab=pm" target="_self"><div class="aqpl-quick-title">✅ PM Check Sheet</div><div class="aqpl-quick-desc">Inspect, save and generate PM records.</div></a>
+      <a class="aqpl-quick-card" href="?tab=daily-work" target="_self"><div class="aqpl-quick-title">📝 Daily Work Log</div><div class="aqpl-quick-desc">Record machine-wise completed maintenance work.</div></a>
+      <a class="aqpl-quick-card" href="?tab=daily-plan" target="_self"><div class="aqpl-quick-title">📋 Daily Job Plan</div><div class="aqpl-quick-desc">Review planned, pending and completed jobs.</div></a>
+    </div>''',unsafe_allow_html=True)
 """
 if quick_old in source: source=source.replace(quick_old,quick_new,1)
 
