@@ -194,8 +194,7 @@ replacements=[
 for old,new in replacements:
     if old in source: source=source.replace(old,new,1)
 
-# 6) Quick Access cards as real same-page links. The URL change forces a clean
-# page load, so the requested tab can reliably become the default active tab.
+# 6) Quick Access cards as real same-page links.
 quick_old="""    st.markdown('### ⚡ Quick Access')
     qa1,qa2,qa3,qa4 = st.columns(4)
     qa1.markdown('<div class=\"flow\"><b>🚨 New Breakdown</b><br><span class=\"sub\">Open the Breakdown tab to record failure, downtime and action.</span></div>',unsafe_allow_html=True)
@@ -204,21 +203,8 @@ quick_old="""    st.markdown('### ⚡ Quick Access')
     qa4.markdown('<div class=\"flow\"><b>📋 Daily Job Plan</b><br><span class=\"sub\">Review planned, pending and completed maintenance jobs.</span></div>',unsafe_allow_html=True)
 """
 quick_new=r"""    st.markdown('### ⚡ Quick Access')
-    st.markdown('''<style>
-    .aqpl-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:.4rem 0 1rem}
-    .aqpl-quick-card{display:block;min-height:104px;border:1px solid #2b4564;border-radius:12px;padding:14px 16px;background:#10223a;color:#f4f7fb!important;text-decoration:none!important;box-sizing:border-box}
-    .aqpl-quick-card:hover{border-color:#6949e8;box-shadow:0 0 0 1px #6949e8 inset;background:#132944}
-    .aqpl-quick-title{font-weight:700;font-size:15px;margin-bottom:8px}
-    .aqpl-quick-desc{font-size:14px;line-height:1.45;color:#9ec2f4}
-    @media(max-width:850px){.aqpl-quick-grid{grid-template-columns:1fr 1fr}}
-    @media(max-width:520px){.aqpl-quick-grid{grid-template-columns:1fr}}
-    </style>
-    <div class="aqpl-quick-grid">
-      <a class="aqpl-quick-card" href="?tab=breakdown" target="_self"><div class="aqpl-quick-title">🚨 New Breakdown</div><div class="aqpl-quick-desc">Record failure, downtime and action.</div></a>
-      <a class="aqpl-quick-card" href="?tab=pm" target="_self"><div class="aqpl-quick-title">✅ PM Check Sheet</div><div class="aqpl-quick-desc">Inspect, save and generate PM records.</div></a>
-      <a class="aqpl-quick-card" href="?tab=daily-work" target="_self"><div class="aqpl-quick-title">📝 Daily Work Log</div><div class="aqpl-quick-desc">Record machine-wise completed maintenance work.</div></a>
-      <a class="aqpl-quick-card" href="?tab=daily-plan" target="_self"><div class="aqpl-quick-title">📋 Daily Job Plan</div><div class="aqpl-quick-desc">Review planned, pending and completed jobs.</div></a>
-    </div>''',unsafe_allow_html=True)
+    _aqpl_quick_html='''<style>.aqpl-quick-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin:.4rem 0 1rem}.aqpl-quick-card{display:block;min-height:104px;border:1px solid #2b4564;border-radius:12px;padding:14px 16px;background:#10223a;color:#f4f7fb!important;text-decoration:none!important;box-sizing:border-box}.aqpl-quick-card:hover{border-color:#6949e8;box-shadow:0 0 0 1px #6949e8 inset;background:#132944}.aqpl-quick-title{font-weight:700;font-size:15px;margin-bottom:8px}.aqpl-quick-desc{font-size:14px;line-height:1.45;color:#9ec2f4}@media(max-width:850px){.aqpl-quick-grid{grid-template-columns:1fr 1fr}}@media(max-width:520px){.aqpl-quick-grid{grid-template-columns:1fr}}</style><div class="aqpl-quick-grid"><a class="aqpl-quick-card" href="?tab=breakdown" target="_self"><div class="aqpl-quick-title">🚨 New Breakdown</div><div class="aqpl-quick-desc">Record failure, downtime and action.</div></a><a class="aqpl-quick-card" href="?tab=pm" target="_self"><div class="aqpl-quick-title">✅ PM Check Sheet</div><div class="aqpl-quick-desc">Inspect, save and generate PM records.</div></a><a class="aqpl-quick-card" href="?tab=daily-work" target="_self"><div class="aqpl-quick-title">📝 Daily Work Log</div><div class="aqpl-quick-desc">Record machine-wise completed maintenance work.</div></a><a class="aqpl-quick-card" href="?tab=daily-plan" target="_self"><div class="aqpl-quick-title">📋 Daily Job Plan</div><div class="aqpl-quick-desc">Review planned, pending and completed jobs.</div></a></div>'''
+    st.markdown(_aqpl_quick_html,unsafe_allow_html=True)
 """
 if quick_old in source: source=source.replace(quick_old,quick_new,1)
 
