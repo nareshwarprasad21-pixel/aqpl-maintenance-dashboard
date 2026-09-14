@@ -4,14 +4,15 @@ from pathlib import Path
 DASHBOARD_SCRIPT = Path(__file__).with_name("legacy_app.py")
 source = DASHBOARD_SCRIPT.read_text(encoding="utf-8")
 
-# 0) Add a reusable Classification screen checklist template to the mapping dropdown.
-# It intentionally uses the existing Tertiary class screen inspection points.
+# 0) Reusable Classification screen template.
+# Based on Tertiary class screen, but points 6, 7, 8 and 10 are intentionally removed.
 _classification_anchor="STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-pm-plan-2026-27-v2')"
-_classification_repl=_classification_anchor+"\nCHECKS['Classification screen']=list(CHECKS.get('Tertiary class screen',CHECKS.get('Vibro screen',[])))"
-if _classification_anchor in source: source=source.replace(_classification_anchor,_classification_repl,1)
+_classification_repl=_classification_anchor+"\n_base_classification=list(CHECKS.get('Tertiary class screen',CHECKS.get('Vibro screen',[])))\nCHECKS['Classification screen']=[pt for idx,pt in enumerate(_base_classification,1) if idx not in (6,7,8,10)]"
+if _classification_anchor in source:
+    source=source.replace(_classification_anchor,_classification_repl,1)
 
 # 1) PM Action / Remark saved sentence suggestions
-old_block = """        results=[]
+old_block="""        results=[]
         with st.form(f'pmform_{pm_key}'):
             h1,h2,h3,h4,h5=st.columns([0.7,4.6,2,3.4,3.4])
             h1.markdown('**S.No.**'); h2.markdown('**Check Points**'); h3.markdown('**Status**'); h4.markdown('**Actions**'); h5.markdown('**Remarks**')
@@ -24,7 +25,7 @@ old_block = """        results=[]
                 remark=e.text_input('Remark',key=f'{pm_key}_r{i}',label_visibility='collapsed',placeholder='Observation/condition')
                 results.append((pt,status,action_txt,remark))
 """
-new_block = """        pm_suggestion_history=q('select check_point,action,remark from pm_checks where machine_code=? order by id desc',(code,))
+new_block="""        pm_suggestion_history=q('select check_point,action,remark from pm_checks where machine_code=? order by id desc',(code,))
 
         def pm_saved_suggestions(check_point,field_name,limit=8):
             if pm_suggestion_history.empty or field_name not in pm_suggestion_history.columns:return []
@@ -65,6 +66,7 @@ new_daily="""            daily_machine_options=MACH.machine_code.tolist()
             misc_machine_name=''; misc_machine_code=''; misc_location=''
 """
 if old_daily in source: source=source.replace(old_daily,new_daily,1)
+
 old_validation="""        elif daily_code in ['__MISC__','__FACILITY__'] and not misc_machine_name.strip():st.error('Manual/Facility entry के लिए Machine / Equipment Name या Work Area required है।')
         else:
 """
@@ -153,7 +155,7 @@ def render_datewise_history(kind,key_prefix,default_machine=None):
         d2.download_button('📄 Download PDF',_aqpl_pdf_bytes(display,title,f'Date Range: {from_date:%d-%m-%Y} to {to_date:%d-%m-%Y}'),base+'.pdf','application/pdf',key=f'{key_prefix}_pdf')
 '''
 
-# 4) Tabs: query-param driven default so Quick Access works after full reload.
+# 4) Query-param driven main tab default for Quick Access links.
 tabs_anchor="T=st.tabs(['🏠 Dashboard','📅 PM Plan','✅ PM Check Sheet','🚨 Breakdown','📋 Daily Job Plan','📝 Daily Work Log','🗂️ Machine History','📋 Breakdown History','🧾 Work Orders & Permits','🔎 Why-Why Analysis','⚙️ Equipment Master','🔗 Checklist Mapping'])"
 tabs_repl=r"""_AQPL_TABS=['🏠 Dashboard','📅 PM Plan','✅ PM Check Sheet','🚨 Breakdown','📋 Daily Job Plan','📝 Daily Work Log','🗂️ Machine History','📋 Breakdown History','🧾 Work Orders & Permits','🔎 Why-Why Analysis','⚙️ Equipment Master','🔗 Checklist Mapping']
 _AQPL_TAB_LINKS={'dashboard':'🏠 Dashboard','pm':'✅ PM Check Sheet','breakdown':'🚨 Breakdown','daily-plan':'📋 Daily Job Plan','daily-work':'📝 Daily Work Log'}
@@ -162,7 +164,7 @@ _aqpl_default_tab=_AQPL_TAB_LINKS.get(_aqpl_requested,'🏠 Dashboard')
 T=st.tabs(_AQPL_TABS,default=_aqpl_default_tab)"""
 if tabs_anchor in source: source=source.replace(tabs_anchor,history_helper+'\n'+tabs_repl,1)
 
-# 5) Add date-wise history UI to requested tabs
+# 5) Date-wise history UI in requested tabs
 replacements=[
 ("""with T[2]:
     st.subheader('Preventive Maintenance Check Sheet')
@@ -200,7 +202,7 @@ replacements=[
 for old,new in replacements:
     if old in source: source=source.replace(old,new,1)
 
-# 6) Quick Access cards as real same-page links.
+# 6) Quick Access cards as same-page links.
 quick_old="""    st.markdown('### ⚡ Quick Access')
     qa1,qa2,qa3,qa4 = st.columns(4)
     qa1.markdown('<div class=\"flow\"><b>🚨 New Breakdown</b><br><span class=\"sub\">Open the Breakdown tab to record failure, downtime and action.</span></div>',unsafe_allow_html=True)
