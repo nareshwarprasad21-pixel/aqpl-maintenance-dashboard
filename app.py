@@ -11,7 +11,7 @@ _classification_repl=_classification_anchor+"\n_base_classification=list(CHECKS.
 if _classification_anchor in source:
     source=source.replace(_classification_anchor,_classification_repl,1)
 
-# 1) PM Action / Remark saved sentence suggestions
+# 1) PM Action / Remark smart + saved sentence suggestions for ALL machines/checkpoints.
 old_block="""        results=[]
         with st.form(f'pmform_{pm_key}'):
             h1,h2,h3,h4,h5=st.columns([0.7,4.6,2,3.4,3.4])
@@ -25,18 +25,48 @@ old_block="""        results=[]
                 remark=e.text_input('Remark',key=f'{pm_key}_r{i}',label_visibility='collapsed',placeholder='Observation/condition')
                 results.append((pt,status,action_txt,remark))
 """
-new_block="""        pm_suggestion_history=q('select check_point,action,remark from pm_checks where machine_code=? order by id desc',(code,))
+new_block="""        pm_suggestion_history=q('select machine_code,check_point,action,remark from pm_checks order by id desc')
 
-        def pm_saved_suggestions(check_point,field_name,limit=8):
-            if pm_suggestion_history.empty or field_name not in pm_suggestion_history.columns:return []
-            key=str(check_point).strip().casefold()
-            rows=pm_suggestion_history[pm_suggestion_history['check_point'].fillna('').astype(str).str.strip().str.casefold()==key]
-            out=[]; seen=set()
-            for value in rows[field_name].tolist():
-                text='' if value is None else str(value).strip(); norm=text.casefold()
-                if not text or norm in ('nan','none') or norm in seen:continue
-                seen.add(norm); out.append(text)
-                if len(out)>=limit:break
+        def pm_smart_defaults(check_point,field_name):
+            p=str(check_point).strip(); k=p.casefold()
+            if field_name=='action':
+                specific=[]
+                if any(x in k for x in ['clean','filter','dust']): specific=['Checked and cleaned','Cleaning done']
+                elif any(x in k for x in ['grease','lubric','oil']): specific=['Checked and lubricated','Lubrication done']
+                elif any(x in k for x in ['tight','bolt','nut','fastener']): specific=['Checked and tightened','Tightening done']
+                elif any(x in k for x in ['belt','chain','coupling','alignment','tension']): specific=['Checked and adjusted','Alignment/tension checked']
+                elif any(x in k for x in ['leak','hose','pipe','valve','seal']): specific=['Checked for leakage','Checked and found no leakage']
+                elif any(x in k for x in ['bearing','vibration','noise','temperature']): specific=['Checked during running','Condition checked']
+                elif any(x in k for x in ['motor','electrical','cable','terminal','panel']): specific=['Checked electrical condition','Connections checked']
+                else: specific=['Checked','Inspected']
+                return specific+['Checked and found OK','Checked and found in good condition','No action required']
+            specific=[]
+            if any(x in k for x in ['leak','hose','pipe','valve','seal']): specific=['No leakage observed','Condition found satisfactory']
+            elif any(x in k for x in ['bearing','vibration','noise']): specific=['Running normal; no abnormal noise/vibration','Condition found normal']
+            elif 'temperature' in k: specific=['Temperature found normal','No overheating observed']
+            elif any(x in k for x in ['belt','chain','coupling','alignment','tension']): specific=['Alignment/tension found OK','Condition found satisfactory']
+            elif any(x in k for x in ['motor','electrical','cable','terminal','panel']): specific=['Electrical condition found OK','No abnormality observed']
+            elif any(x in k for x in ['clean','filter','dust']): specific=['Clean and in good condition','No abnormal accumulation observed']
+            else: specific=['Found in good condition','Condition found satisfactory']
+            return specific+['No abnormality observed','OK']
+
+        def pm_saved_suggestions(check_point,field_name,limit=10):
+            out=[]; seen=set(); key=str(check_point).strip().casefold()
+            if not pm_suggestion_history.empty and field_name in pm_suggestion_history.columns:
+                rows=pm_suggestion_history[pm_suggestion_history['check_point'].fillna('').astype(str).str.strip().str.casefold()==key]
+                if 'machine_code' in rows.columns:
+                    same=rows[rows['machine_code'].fillna('').astype(str)==str(code)]
+                    other=rows[rows['machine_code'].fillna('').astype(str)!=str(code)]
+                    rows=pd.concat([same,other],ignore_index=True)
+                for value in rows[field_name].tolist():
+                    text='' if value is None else str(value).strip(); norm=text.casefold()
+                    if not text or norm in ('nan','none') or norm in seen:continue
+                    seen.add(norm); out.append(text)
+                    if len(out)>=limit:break
+            for text in pm_smart_defaults(check_point,field_name):
+                norm=text.casefold()
+                if norm not in seen:
+                    seen.add(norm); out.append(text)
             return out
 
         results=[]
@@ -46,8 +76,8 @@ new_block="""        pm_suggestion_history=q('select check_point,action,remark f
             for i,pt in enumerate(CHECKS[sheet],1):
                 a,b,c,d,e=st.columns([0.7,4.6,2,3.4,3.4]); a.write(i); b.write(pt)
                 status=c.selectbox('Status',['OK','NOT OK','N/A'],key=f'{pm_key}_s{i}',label_visibility='collapsed')
-                action_txt=d.selectbox('Action',pm_saved_suggestions(pt,'action'),index=None,key=f'{pm_key}_a{i}',label_visibility='collapsed',placeholder='Previous action / type new',accept_new_options=True) or ''
-                remark=e.selectbox('Remark',pm_saved_suggestions(pt,'remark'),index=None,key=f'{pm_key}_r{i}',label_visibility='collapsed',placeholder='Previous observation / type new',accept_new_options=True) or ''
+                action_txt=d.selectbox('Action',pm_saved_suggestions(pt,'action'),index=None,key=f'{pm_key}_a{i}',label_visibility='collapsed',placeholder='Suggested / previous action / type new',accept_new_options=True) or ''
+                remark=e.selectbox('Remark',pm_saved_suggestions(pt,'remark'),index=None,key=f'{pm_key}_r{i}',label_visibility='collapsed',placeholder='Suggested / previous observation / type new',accept_new_options=True) or ''
                 results.append((pt,status,action_txt,remark))
 """
 if old_block in source: source=source.replace(old_block,new_block,1)
