@@ -1,5 +1,6 @@
 """AQPL Maintenance Dashboard entrypoint with runtime enhancements."""
 from pathlib import Path
+import re as _runtime_re
 
 DASHBOARD_SCRIPT = Path(__file__).with_name("legacy_app.py")
 source = DASHBOARD_SCRIPT.read_text(encoding="utf-8")
@@ -148,12 +149,8 @@ saved_pm_new="""        st.markdown('#### 📚 Saved PM Check Sheets - Download 
 """
 if saved_pm_old in source: source=source.replace(saved_pm_old,saved_pm_new,1)
 
-# Handle the ALL MACHINES option against the current legacy_app.py PM code.
-pm_code_old="""    st.subheader('Preventive Maintenance Check Sheet')
-    code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
-    mr=machine_row(code)
-    sheet=checklist_for(code)"""
-pm_code_new="""    st.subheader('Preventive Maintenance Check Sheet')
+# ALL MACHINES PM history/download. Regex is deliberate so harmless whitespace changes in legacy_app.py cannot disable this fix.
+_pm_all_handler="""    st.subheader('Preventive Maintenance Check Sheet')
     code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
     if code=='ALL MACHINES':
         st.markdown('### 📚 All Machines PM Check Sheets - Download / Print')
@@ -195,7 +192,10 @@ pm_code_new="""    st.subheader('Preventive Maintenance Check Sheet')
         st.stop()
     mr=machine_row(code)
     sheet=checklist_for(code)"""
-if pm_code_old in source: source=source.replace(pm_code_old,pm_code_new,1)
+_pm_pattern=r"(?m)^    st\.subheader\('Preventive Maintenance Check Sheet'\)\s*\n    code=st\.selectbox\('Machine Code',\['ALL MACHINES'\]\+MACH\.machine_code\.tolist\(\),key='pmcode'\)\s*\n    mr=machine_row\(code\)\s*\n    sheet=checklist_for\(code\)"
+source,_pm_all_count=_runtime_re.subn(_pm_pattern,_pm_all_handler,source,count=1)
+if _pm_all_count!=1:
+    raise RuntimeError('AQPL ALL MACHINES PM handler could not be injected into legacy_app.py')
 
 # Permit Additional Precautions autosuggestions, permit-type aware + previously saved entries.
 permit_old="""        with st.form('permitform'):
