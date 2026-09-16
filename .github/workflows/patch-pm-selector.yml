@@ -1,0 +1,33 @@
+name: Patch PM Selector
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/patch-pm-selector.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch selector
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('legacy_app.py')
+          s = p.read_text(encoding='utf-8')
+          old = "    code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode')"
+          new = "    code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')"
+          if old not in s:
+              raise SystemExit('selector target not found')
+          p.write_text(s.replace(old,new,1), encoding='utf-8')
+          PY
+      - name: Commit
+        run: |
+          git config user.name "AQPL Dashboard Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add legacy_app.py
+          git commit -m "Directly add ALL MACHINES to PM selector"
+          git push
