@@ -71,6 +71,83 @@ new_block="""        pm_suggestion_history=q('select machine_code,check_point,ac
 """
 if old_block in source: source=source.replace(old_block,new_block,1)
 
+# Add linked permit details to every generated PM PDF, without changing PM saving logic.
+pm_meta_anchor="""    meta_table=Table(meta,colWidths=[30*mm,61*mm,32*mm,61*mm])"""
+pm_meta_repl="""    try:
+        linked_permits=q('select permit_no,permit_type,status,supervisor,start_dt,end_dt,precautions from permits where job_id=? order by id',(val(job,'job_id'),))
+        if not linked_permits.empty:
+            permit_text=[]
+            for _,p in linked_permits.iterrows():
+                permit_text.append(f\"{p.get('permit_type','')} | Permit: {p.get('permit_no','')} | Status: {p.get('status','')} | Supervisor: {p.get('supervisor','') or '-'} | Start: {p.get('start_dt','') or '-'} | End: {p.get('end_dt','') or '-'} | Precautions: {p.get('precautions','') or '-'}\")
+            meta.append([Paragraph('<b>Safety / Permit Details</b>',body_bold),Paragraph(escape(' ; '.join(permit_text)),body_style),Paragraph('',body_style),Paragraph('',body_style)])
+    except Exception:
+        pass
+    meta_table=Table(meta,colWidths=[30*mm,61*mm,32*mm,61*mm])"""
+if pm_meta_anchor in source: source=source.replace(pm_meta_anchor,pm_meta_repl,1)
+
+# Replace saved PM selector with machine-wise From/To date history and individual/batch PDF downloads.
+saved_pm_old="""        st.markdown('#### 📚 Saved PM Check Sheets - Download / Print')
+        saved_pm_jobs=q(\"select * from jobs where machine_code=? and job_type='PM' order by opened_at desc\",(code,))
+        if saved_pm_jobs.empty:
+            st.info('इस machine की saved PM Check Sheet अभी उपलब्ध नहीं है।')
+        else:
+            saved_job_id=st.selectbox('Select saved PM Job / Work Order ID',saved_pm_jobs.job_id.tolist(),key=f'saved_pm_job_{code}')
+            saved_job=saved_pm_jobs[saved_pm_jobs.job_id==saved_job_id].iloc[0]
+            saved_checks=q('select check_point,result,action,remark from pm_checks where job_id=? order by id',(saved_job_id,))
+            if saved_checks.empty:
+                st.warning('इस Job ID के checklist details उपलब्ध नहीं हैं।')
+            else:
+                saved_pdf=build_pm_checksheet_pdf(saved_job,saved_checks,mr)
+                st.download_button('⬇️ Download Saved PM Check Sheet PDF',data=saved_pdf,
+                    file_name=f\"PM_Check_Sheet_{saved_job_id.replace('/','-')}.pdf\",mime='application/pdf',
+                    key=f'saved_pm_pdf_{saved_job_id}',on_click='ignore')
+"""
+saved_pm_new="""        st.markdown('#### 📚 Saved PM Check Sheets - Download / Print')
+        st.caption(f'History is filtered only for selected Machine Code: {code}')
+        hf1,hf2,hf3=st.columns([1,1,1])
+        history_from=hf1.date_input('From Date',value=TODAY.replace(day=1),key=f'pm_history_from_{pm_key}')
+        history_to=hf2.date_input('To Date',value=TODAY,key=f'pm_history_to_{pm_key}')
+        search_history=hf3.button('🔎 Search History',key=f'pm_history_search_{pm_key}',use_container_width=True)
+        state_key=f'pm_history_range_{pm_key}'
+        if search_history:
+            if history_from>history_to:
+                st.error('From Date cannot be after To Date.')
+            else:
+                st.session_state[state_key]=(history_from,history_to)
+        active_from,active_to=st.session_state.get(state_key,(history_from,history_to))
+        saved_pm_jobs=q(\"select * from jobs where machine_code=? and job_type='PM' order by opened_at desc\",(code,))
+        if not saved_pm_jobs.empty:
+            saved_pm_jobs=saved_pm_jobs.copy()
+            saved_pm_jobs['_maintenance_dt']=pd.to_datetime(saved_pm_jobs['opened_at'],errors='coerce')
+            saved_pm_jobs=saved_pm_jobs[(saved_pm_jobs['_maintenance_dt'].dt.date>=active_from)&(saved_pm_jobs['_maintenance_dt'].dt.date<=active_to)]
+        if saved_pm_jobs.empty:
+            st.info(f'No saved PM Check Sheet found for {code} from {active_from.strftime(\"%d-%m-%Y\")} to {active_to.strftime(\"%d-%m-%Y\")}.')
+        else:
+            st.success(f'{len(saved_pm_jobs)} PM record(s) found for {code}.')
+            import zipfile
+            batch_buffer=BytesIO()
+            with zipfile.ZipFile(batch_buffer,'w',zipfile.ZIP_DEFLATED) as pm_zip:
+                for _,saved_job in saved_pm_jobs.iterrows():
+                    saved_job_id=str(saved_job['job_id'])
+                    saved_checks=q('select check_point,result,action,remark from pm_checks where job_id=? order by id',(saved_job_id,))
+                    maintenance_dt=pd.to_datetime(saved_job.get('opened_at'),errors='coerce')
+                    maintenance_label=maintenance_dt.strftime('%d-%m-%Y') if not pd.isna(maintenance_dt) else str(saved_job.get('opened_at',''))
+                    r1,r2,r3=st.columns([1.2,2.2,1.5])
+                    r1.markdown(f'**{maintenance_label}**')
+                    r2.markdown(f'`{saved_job_id}`')
+                    if saved_checks.empty:
+                        r3.caption('Checklist details unavailable')
+                        continue
+                    saved_pdf=build_pm_checksheet_pdf(saved_job,saved_checks,mr)
+                    safe_job=saved_job_id.replace('/','-')
+                    pdf_name=f'PM_Check_Sheet_{safe_job}_{maintenance_label.replace(\"-\",\"\")}.pdf'
+                    r3.download_button('⬇️ Download PDF',data=saved_pdf,file_name=pdf_name,mime='application/pdf',key=f'pm_hist_pdf_{pm_key}_{safe_job}',on_click='ignore',use_container_width=True)
+                    pm_zip.writestr(pdf_name,saved_pdf)
+            batch_buffer.seek(0)
+            st.download_button('📦 Download All in Date Range',data=batch_buffer.getvalue(),file_name=f'PM_History_{pm_key}_{active_from.strftime(\"%Y%m%d\")}_{active_to.strftime(\"%Y%m%d\")}.zip',mime='application/zip',key=f'pm_hist_all_{pm_key}_{active_from}_{active_to}',on_click='ignore',use_container_width=True)
+"""
+if saved_pm_old in source: source=source.replace(saved_pm_old,saved_pm_new,1)
+
 # Permit Additional Precautions autosuggestions, permit-type aware + previously saved entries.
 permit_old="""        with st.form('permitform'):
             sup=st.text_input('Supervisor',value=str(r.supervisor or '')); activity=st.text_input('Activity',value=str(r.activity or '')); start=st.text_input('Start date/time',value=str(r.start_dt or '')); end=st.text_input('End date/time',value=str(r.end_dt or '')); precautions=st.text_area('Additional precautions / concern noticed',value=str(r.precautions or '')); status=st.selectbox('Permit Status',['DRAFT','GRANTED','CLOSED'],index=['DRAFT','GRANTED','CLOSED'].index(r.status if r.status in ['DRAFT','GRANTED','CLOSED'] else 'DRAFT')); save=st.form_submit_button('Save Permit')
