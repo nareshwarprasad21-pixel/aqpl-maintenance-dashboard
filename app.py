@@ -77,31 +77,13 @@ permit_old="""        with st.form('permitform'):
         if save:execsql('update permits set supervisor=?,activity=?,start_dt=?,end_dt=?,precautions=?,status=? where permit_no=?',(sup,activity,start,end,precautions,status,pid));st.success('Permit updated.')
 """
 permit_new="""        permit_type=str(r.permit_type or '').strip().upper()
-        height_precautions=[
-            'No additional concern noticed',
-            'Full body harness and lifeline required',
-            'Work area barricaded; no person allowed below',
-            'Tools to be secured to prevent falling',
-            'Proper scaffolding / working platform required',
-            'LOTO to be ensured before starting work',
-            'Safe access ladder and working platform to be ensured',
-            'Safety helmet with chin strap and required PPE to be used'
-        ]
-        hot_precautions=[
-            'No additional concern noticed',
-            'Fire extinguisher kept ready; combustible material removed',
-            'Gas hoses, regulator and flashback arrestor checked',
-            'Fire watch to be maintained during hot work',
-            'LOTO to be ensured before starting work',
-            'Welding machine, holder and earthing connection checked',
-            'Hot work area barricaded and nearby material protected from sparks',
-            'Required PPE including welding shield, gloves and safety shoes to be used'
-        ]
+        height_precautions=['No additional concern noticed','Full body harness and lifeline required','Work area barricaded; no person allowed below','Tools to be secured to prevent falling','Proper scaffolding / working platform required','LOTO to be ensured before starting work','Safe access ladder and working platform to be ensured','Safety helmet with chin strap and required PPE to be used']
+        hot_precautions=['No additional concern noticed','Fire extinguisher kept ready; combustible material removed','Gas hoses, regulator and flashback arrestor checked','Fire watch to be maintained during hot work','LOTO to be ensured before starting work','Welding machine, holder and earthing connection checked','Hot work area barricaded and nearby material protected from sparks','Required PPE including welding shield, gloves and safety shoes to be used']
         default_precautions=height_precautions if 'HEIGHT' in permit_type else hot_precautions if 'HOT' in permit_type else ['No additional concern noticed','LOTO to be ensured before starting work','Work area barricaded and required PPE to be used']
-        saved_precautions=q(\"select precautions from permits where permit_type=? and precautions is not null and trim(precautions)<>'' order by id desc\",(r.permit_type,))
+        saved_precautions=q('select precautions from permits where permit_type=? order by id desc',(r.permit_type,))
         permit_options=[]; permit_seen=set()
         for value in saved_precautions['precautions'].tolist() if len(saved_precautions) and 'precautions' in saved_precautions.columns else []:
-            text=str(value).strip(); norm=text.casefold()
+            text='' if value is None else str(value).strip(); norm=text.casefold()
             if text and norm not in ('none','nan') and norm not in permit_seen: permit_seen.add(norm); permit_options.append(text)
         for text in default_precautions:
             norm=text.casefold()
