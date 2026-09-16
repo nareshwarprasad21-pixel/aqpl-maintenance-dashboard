@@ -812,7 +812,7 @@ with T[1]:
 
 with T[2]:
     st.subheader('Preventive Maintenance Check Sheet')
-    code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode')
+    code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
     mr=machine_row(code)
     sheet=checklist_for(code)
     if not sheet or sheet not in CHECKS:
