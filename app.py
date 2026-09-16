@@ -148,12 +148,16 @@ saved_pm_new="""        st.markdown('#### 📚 Saved PM Check Sheets - Download 
 """
 if saved_pm_old in source: source=source.replace(saved_pm_old,saved_pm_new,1)
 
-# Add an ALL MACHINES option to the PM page for monthly/date-range document downloads.
-pm_code_old="""    st.subheader('Preventive Maintenance Check Sheet'); code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode'); mr=machine_row(code); sheet=resolve_checklist(code,mr)"""
-pm_code_new="""    st.subheader('Preventive Maintenance Check Sheet'); code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
+# Handle the ALL MACHINES option against the current legacy_app.py PM code.
+pm_code_old="""    st.subheader('Preventive Maintenance Check Sheet')
+    code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
+    mr=machine_row(code)
+    sheet=checklist_for(code)"""
+pm_code_new="""    st.subheader('Preventive Maintenance Check Sheet')
+    code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
     if code=='ALL MACHINES':
         st.markdown('### 📚 All Machines PM Check Sheets - Download / Print')
-        st.caption('Select a month/date range to collect saved PM documents for every machine. This view is download/history only; PM entry remains machine-specific.')
+        st.caption('Select a date range to collect saved PM documents for every machine. PM entry remains machine-specific.')
         af1,af2,af3=st.columns([1,1,1])
         all_from=af1.date_input('From Date',value=TODAY.replace(day=1),key='all_pm_from')
         all_to=af2.date_input('To Date',value=TODAY,key='all_pm_to')
@@ -189,7 +193,8 @@ pm_code_new="""    st.subheader('Preventive Maintenance Check Sheet'); code=st.s
             all_zip_buffer.seek(0)
             st.download_button('📦 Download All Machines PM Sheets',data=all_zip_buffer.getvalue(),file_name=f'AQPL_All_Machines_PM_{range_from.strftime(\"%Y%m%d\")}_{range_to.strftime(\"%Y%m%d\")}.zip',mime='application/zip',key=f'all_pm_zip_{range_from}_{range_to}',on_click='ignore',use_container_width=True)
         st.stop()
-    mr=machine_row(code); sheet=resolve_checklist(code,mr)"""
+    mr=machine_row(code)
+    sheet=checklist_for(code)"""
 if pm_code_old in source: source=source.replace(pm_code_old,pm_code_new,1)
 
 # Permit Additional Precautions autosuggestions, permit-type aware + previously saved entries.
