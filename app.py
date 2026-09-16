@@ -124,7 +124,7 @@ daily_edit_new="""        history_edit_row=q('select start_dt,restart_dt,remark 
                 total_minutes=int((edit_end_dt-edit_start_dt).total_seconds()//60); total_hours,total_mins=divmod(total_minutes,60); edit_total_time=f'{total_hours}h {total_mins}m'
                 meta=daily_log_details(history_edit_row.remark); meta.update({'team_members':edit_team.strip(),'work_status':edit_status,'pending_action':edit_pending.strip(),'remarks':edit_remarks.strip(),'total_time':edit_total_time})
                 start_iso=edit_start_dt.isoformat(timespec='minutes'); end_iso=edit_end_dt.isoformat(timespec='minutes')
-                execsql('update history set start_dt=?,problem=?,action_taken=?,restart_dt=?,remark=? where job_id=?',(start_iso,edit_problem.strip(),edit_action.strip(),end_iso,DAILY_LOG_PREFIX+json.dumps(meta,ensure_ascii=False),selected_daily)); execsql('update jobs set start_dt=?,problem=?,status=?,end_dt=? where job_id=?',(start_iso,edit_problem.strip(),edit_status.upper(),end_iso,selected_daily)); st.success(f'{selected_daily} updated successfully. Total time: {edit_total_time}.'); st.rerun()
+                execsql('update history set start_dt=?,problem=?,action_taken=?,restart_dt=?,remark=? where job_id=?',(start_iso,edit_problem.strip(),edit_action.strip(),end_iso,DAILY_LOG_PREFIX+json.dumps(meta,ensure_ascii=False),selected_daily)); execsql('update jobs set problem=?,status=? where job_id=?',(edit_problem.strip(),edit_status.upper(),selected_daily)); st.success(f'{selected_daily} updated successfully. Total time: {edit_total_time}.'); st.rerun()
 """
 if daily_edit_old in source: source=source.replace(daily_edit_old,daily_edit_new,1)
 
