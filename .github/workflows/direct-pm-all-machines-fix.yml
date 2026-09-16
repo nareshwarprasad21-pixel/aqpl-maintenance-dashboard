@@ -1,0 +1,84 @@
+name: Direct PM ALL MACHINES Fix
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/direct-pm-all-machines-fix.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Patch actual legacy PM selector
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('legacy_app.py')
+          s=p.read_text(encoding='utf-8')
+          old="""    code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode')
+    mr=machine_row(code)"""
+          new="""    code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
+    if code=='ALL MACHINES':
+        st.markdown('### 📚 All Machines PM Check Sheets - Download / Print')
+        st.caption('Select From Date and To Date to retrieve saved PM sheets for every machine.')
+        af1,af2,af3=st.columns([1,1,1])
+        all_from=af1.date_input('From Date',value=TODAY.replace(day=1),key='all_pm_from')
+        all_to=af2.date_input('To Date',value=TODAY,key='all_pm_to')
+        all_search=af3.button('🔎 Search History',key='all_pm_search',use_container_width=True)
+        if all_search:
+            if all_from>all_to:
+                st.error('From Date cannot be after To Date.')
+            else:
+                st.session_state['all_pm_range']=(all_from,all_to)
+        range_from,range_to=st.session_state.get('all_pm_range',(all_from,all_to))
+        all_jobs=q(\"select * from jobs where job_type='PM' order by opened_at desc\")
+        if not all_jobs.empty:
+            all_jobs=all_jobs.copy()
+            all_jobs['_pm_dt']=pd.to_datetime(all_jobs['opened_at'],errors='coerce')
+            all_jobs=all_jobs[(all_jobs['_pm_dt'].dt.date>=range_from)&(all_jobs['_pm_dt'].dt.date<=range_to)]
+        if all_jobs.empty:
+            st.info(f'No saved PM Check Sheets found from {range_from:%d-%m-%Y} to {range_to:%d-%m-%Y}.')
+        else:
+            import zipfile
+            all_zip=BytesIO(); pdf_count=0
+            with zipfile.ZipFile(all_zip,'w',zipfile.ZIP_DEFLATED) as zf:
+                for _,saved_job in all_jobs.iterrows():
+                    saved_job_id=str(saved_job['job_id']); saved_code=str(saved_job['machine_code'])
+                    saved_checks=q('select check_point,result,action,remark from pm_checks where job_id=? order by id',(saved_job_id,))
+                    if saved_checks.empty:
+                        continue
+                    try:
+                        saved_machine=machine_row(saved_code)
+                        saved_pdf=build_pm_checksheet_pdf(saved_job,saved_checks,saved_machine)
+                    except Exception:
+                        continue
+                    saved_dt=pd.to_datetime(saved_job.get('opened_at'),errors='coerce')
+                    saved_date=saved_dt.strftime('%d-%m-%Y') if not pd.isna(saved_dt) else ''
+                    safe_code=re.sub(r'[^A-Za-z0-9_-]+','-',saved_code)
+                    safe_job=saved_job_id.replace('/','-')
+                    pdf_name=f'{safe_code}/PM_Check_Sheet_{safe_job}_{saved_date.replace(\"-\",\"\")}.pdf'
+                    zf.writestr(pdf_name,saved_pdf); pdf_count+=1
+                    c1,c2,c3,c4=st.columns([1.5,1.2,2.2,1.2])
+                    c1.write(saved_code); c2.write(saved_date); c3.code(saved_job_id)
+                    c4.download_button('⬇️ PDF',data=saved_pdf,file_name=pdf_name.split('/')[-1],mime='application/pdf',key=f'allpm_{safe_job}',on_click='ignore',use_container_width=True)
+            all_zip.seek(0)
+            st.success(f'{pdf_count} saved PM sheet(s) ready for download.')
+            st.download_button('📦 Download All in Date Range',data=all_zip.getvalue(),file_name=f'AQPL_All_Machines_PM_{range_from:%Y%m%d}_{range_to:%Y%m%d}.zip',mime='application/zip',key=f'all_pm_zip_{range_from}_{range_to}',on_click='ignore',use_container_width=True)
+        st.stop()
+    mr=machine_row(code)"""
+          if old not in s:
+              raise SystemExit('Target PM selector not found; refusing unsafe edit')
+          p.write_text(s.replace(old,new,1),encoding='utf-8')
+      - name: Commit direct source fix
+        run: |
+          git config user.name "AQPL Dashboard Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add legacy_app.py
+          git commit -m "Directly implement ALL MACHINES in PM selector"
+          git push
