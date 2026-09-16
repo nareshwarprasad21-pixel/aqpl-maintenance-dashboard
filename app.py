@@ -149,7 +149,7 @@ saved_pm_new="""        st.markdown('#### 📚 Saved PM Check Sheets - Download 
 """
 if saved_pm_old in source: source=source.replace(saved_pm_old,saved_pm_new,1)
 
-# ALL MACHINES PM history/download. Regex is deliberate so harmless whitespace changes in legacy_app.py cannot disable this fix.
+# ALL MACHINES PM history/download. Keep q() SQL inside its supported parser grammar: one ORDER BY column only.
 _pm_all_handler="""    st.subheader('Preventive Maintenance Check Sheet')
     code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
     if code=='ALL MACHINES':
@@ -163,10 +163,11 @@ _pm_all_handler="""    st.subheader('Preventive Maintenance Check Sheet')
             if all_from>all_to: st.error('From Date cannot be after To Date.')
             else: st.session_state['all_pm_range']=(all_from,all_to)
         range_from,range_to=st.session_state.get('all_pm_range',(all_from,all_to))
-        all_jobs=q(\"select * from jobs where job_type='PM' order by opened_at,machine_code\")
+        all_jobs=q(\"select * from jobs where job_type='PM' order by opened_at desc\")
         if not all_jobs.empty:
             all_jobs=all_jobs.copy(); all_jobs['_maintenance_dt']=pd.to_datetime(all_jobs['opened_at'],errors='coerce')
             all_jobs=all_jobs[(all_jobs['_maintenance_dt'].dt.date>=range_from)&(all_jobs['_maintenance_dt'].dt.date<=range_to)]
+            all_jobs=all_jobs.sort_values(['_maintenance_dt','machine_code'],ascending=[False,True])
         if all_jobs.empty:
             st.info(f'No saved PM Check Sheets found from {range_from.strftime(\"%d-%m-%Y\")} to {range_to.strftime(\"%d-%m-%Y\")}.')
         else:
