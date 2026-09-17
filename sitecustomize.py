@@ -17,6 +17,17 @@ def _aqpl_read_text(self, *args, **kwargs):
     if old_cls in text:
         text = text.replace(old_cls, new_cls, 1)
 
+    # Dedicated TOMRA Screen-1 PM checklist requested for AQPL/TOM SCR-1.
+    tom_anchor = "STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-pm-plan-2026-27-v2')"
+    tom_repl = tom_anchor + "\nCHECKS['TOMRA SCREEN-1']=['Check vibration motor cable','Check wire mesh','Check body nuts and bolts','Check vibration spring','Check extra noise and vibration','Check inlet and discharge chute']"
+    if tom_anchor in text:
+        text = text.replace(tom_anchor, tom_repl, 1)
+
+    tom_map_old = """def checklist_for(code):\n    # Dedicated pneumatic-line checklist must override any stale mapping row."""
+    tom_map_new = """def checklist_for(code):\n    # Dedicated TOMRA Screen-1 checklist must override any stale mapping row.\n    if code=='AQPL/TOM SCR-1':return 'TOMRA SCREEN-1'\n    # Dedicated pneumatic-line checklist must override any stale mapping row."""
+    if tom_map_old in text:
+        text = text.replace(tom_map_old, tom_map_new, 1)
+
     # IMPORTANT: actual legacy source has st.subheader and selectbox on separate lines.
     # Patch only the selectbox + following machine_row line so whitespace around the tab block cannot break matching.
     old_pm = """    code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode')\n    mr=machine_row(code)"""
