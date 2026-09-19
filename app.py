@@ -184,10 +184,10 @@ if saved_pm_old in source: source=source.replace(saved_pm_old,saved_pm_new,1)
 
 # ALL MACHINES PM history/download. Keep q() SQL inside its supported parser grammar: one ORDER BY column only.
 _pm_all_handler="""    st.subheader('Preventive Maintenance Check Sheet')
-    code=st.selectbox('Machine Code',['ALL MACHINES']+MACH.machine_code.tolist(),key='pmcode')
-    if code=='ALL MACHINES':
+    show_all_pm=st.checkbox('📚 Search completed PM sheets across all machines',key='show_all_pm_history')
+    if show_all_pm:
         st.markdown('### 📚 All Machines PM Check Sheets - Download / Print')
-        st.caption('Select a date range to collect saved PM documents for every machine. PM entry remains machine-specific.')
+        st.caption('Select a date range to collect saved PM documents for every machine. Each PDF is the original completed PM check sheet, not a generic table.')
         af1,af2,af3=st.columns([1,1,1])
         all_from=af1.date_input('From Date',value=TODAY.replace(day=1),key='all_pm_from')
         all_to=af2.date_input('To Date',value=TODAY,key='all_pm_to')
@@ -223,7 +223,7 @@ _pm_all_handler="""    st.subheader('Preventive Maintenance Check Sheet')
                     c4.download_button('⬇️ PDF',data=all_pdf,file_name=all_pdf_name.split('/')[-1],mime='application/pdf',key=f'all_pm_pdf_{safe_jid}',on_click='ignore',use_container_width=True)
             all_zip_buffer.seek(0)
             st.download_button('📦 Download All Machines PM Sheets',data=all_zip_buffer.getvalue(),file_name=f'AQPL_All_Machines_PM_{range_from.strftime(\"%Y%m%d\")}_{range_to.strftime(\"%Y%m%d\")}.zip',mime='application/zip',key=f'all_pm_zip_{range_from}_{range_to}',on_click='ignore',use_container_width=True)
-        st.stop()
+    code=st.selectbox('Machine Code',MACH.machine_code.tolist(),key='pmcode')
     mr=machine_row(code)
     sheet=checklist_for(code)"""
 _pm_pattern=r"(?m)^    st\.subheader\('Preventive Maintenance Check Sheet'\)\s*\n    code=st\.selectbox\('Machine Code',\['ALL MACHINES'\]\+MACH\.machine_code\.tolist\(\),key='pmcode'\)\s*\n    mr=machine_row\(code\)\s*\n    sheet=checklist_for\(code\)"
@@ -257,6 +257,154 @@ permit_new="""        permit_type=str(r.permit_type or '').strip().upper()
         if save:execsql('update permits set supervisor=?,activity=?,start_dt=?,end_dt=?,precautions=?,status=? where permit_no=?',(sup,activity,start,end,str(precautions or '').strip(),status,pid));st.success('Permit updated.')
 """
 if permit_old in source: source=source.replace(permit_old,permit_new,1)
+
+# Historical record workspace: make date-wise search and downloads consistent
+# across the existing PM, Breakdown, Daily Work and Machine History tabs.
+# PM is intentionally handled above with the original completed check-sheet PDF
+# per result; the blocks below cover the other record types.
+_bm_history_pattern=r"(?s)    st\.markdown\('### 📥 Breakdown Maintenance Report - Date Range / Month-wise'\).*?\n\nwith T\[4\]:"
+_bm_history_repl="""    st.markdown('### 📥 Breakdown Maintenance History — Search & Download')
+    st.caption('Machine Code और From/To Date चुनकर saved breakdown records देखें. हर result का printable Breakdown Report PDF या selected range का CSV / ZIP download करें।')
+    br1,br2,br3=st.columns([1,1,1.35])
+    bm_report_from=br1.date_input('From Date',value=TODAY.replace(day=1),key='bm_report_from')
+    bm_report_to=br2.date_input('To Date',value=TODAY,key='bm_report_to')
+    bm_source=q(\"select id,machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark from breakdown_activity_log order by activity_dt desc\")
+    bm_machine_options=['ALL']+sorted([str(value) for value in bm_source['machine_code'].dropna().unique().tolist()]) if not bm_source.empty else ['ALL']
+    bm_report_machine=br3.selectbox('Machine Filter',bm_machine_options,key='bm_report_machine')
+    if bm_report_from>bm_report_to:
+        st.error('From Date cannot be after To Date.')
+    else:
+        bm_filtered=bm_source.copy()
+        if not bm_filtered.empty:
+            bm_filtered['_dt']=pd.to_datetime(bm_filtered['activity_dt'],errors='coerce')
+            bm_filtered=bm_filtered[(bm_filtered['_dt'].dt.date>=bm_report_from)&(bm_filtered['_dt'].dt.date<=bm_report_to)]
+            if bm_report_machine!='ALL':
+                bm_filtered=bm_filtered[bm_filtered['machine_code'].astype(str)==bm_report_machine]
+        if bm_filtered.empty:
+            st.info(f'No Breakdown Maintenance record found for selected filter from {bm_report_from.strftime(\"%d-%m-%Y\")} to {bm_report_to.strftime(\"%d-%m-%Y\")}.')
+        else:
+            bm_filtered=bm_filtered.copy()
+            bm_filtered['Date']=bm_filtered['_dt'].dt.strftime('%d-%m-%Y')
+            bm_filtered['Start Time']=bm_filtered['_dt'].dt.strftime('%H:%M')
+            report_cols=['Date','Start Time','job_id','machine_code','failure','cause','action','spares','downtime_hr','status','remark']
+            bm_display=bm_filtered[report_cols].rename(columns={'job_id':'Job ID','machine_code':'Machine Code','failure':'Breakdown / Problem','cause':'Cause','action':'Action Taken','spares':'Spares / Material','downtime_hr':'Downtime (Hours)','status':'Status','remark':'Remarks'})
+            total_downtime=pd.to_numeric(bm_display['Downtime (Hours)'],errors='coerce').fillna(0).sum()
+            st.success(f'{len(bm_display)} breakdown record(s) found. Total downtime: {total_downtime:.2f} hours.')
+            st.dataframe(bm_display,use_container_width=True,hide_index=True)
+            dl1,dl2=st.columns(2)
+            dl1.download_button('⬇️ Download Filtered Breakdown CSV',data=bm_display.to_csv(index=False).encode('utf-8-sig'),file_name=f'AQPL_Breakdown_History_{bm_report_from.strftime(\"%Y%m%d\")}_{bm_report_to.strftime(\"%Y%m%d\")}.csv',mime='text/csv',key='bm_report_csv',use_container_width=True)
+            import zipfile
+            bm_jobs=q(\"select * from jobs where job_type='BM' order by opened_at desc\")
+            bm_breakdowns=q(\"select * from breakdowns order by id desc\")
+            bm_zip_buffer=BytesIO()
+            with zipfile.ZipFile(bm_zip_buffer,'w',zipfile.ZIP_DEFLATED) as bm_zip:
+                st.markdown('#### Individual Breakdown Reports')
+                for row_number,(_,bm_row) in enumerate(bm_filtered.iterrows(),1):
+                    bm_job_id=str(bm_row.get('job_id',''))
+                    bm_code=str(bm_row.get('machine_code',''))
+                    job_match=bm_jobs[bm_jobs['job_id'].astype(str)==bm_job_id] if not bm_jobs.empty else pd.DataFrame()
+                    breakdown_match=bm_breakdowns[bm_breakdowns['job_id'].astype(str)==bm_job_id] if not bm_breakdowns.empty else pd.DataFrame()
+                    report_job=job_match.iloc[0].to_dict() if len(job_match) else {'job_id':bm_job_id,'opened_at':str(bm_row.get('activity_dt','')),'closed_at':'','status':str(bm_row.get('status',''))}
+                    report_breakdown=breakdown_match.iloc[0].to_dict() if len(breakdown_match) else bm_row.to_dict()
+                    report_breakdown.update({'job_id':bm_job_id,'machine_code':bm_code,'failure':report_breakdown.get('failure',bm_row.get('failure','')),'cause':report_breakdown.get('cause',bm_row.get('cause','')),'action':report_breakdown.get('action',bm_row.get('action','')),'spares':report_breakdown.get('spares',bm_row.get('spares','')),'downtime_hr':report_breakdown.get('downtime_hr',bm_row.get('downtime_hr',0)),'status':report_breakdown.get('status',bm_row.get('status','')),'remark':bm_row.get('remark',''),'activity_dt':bm_row.get('activity_dt','')})
+                    try:
+                        report_machine=machine_row(bm_code)
+                    except Exception:
+                        continue
+                    report_pdf=build_breakdown_report_pdf(report_job,report_breakdown,report_machine)
+                    safe_job=re.sub(r'[^A-Za-z0-9_-]+','-',bm_job_id).strip('-') or f'row-{row_number}'
+                    report_file=f'Breakdown_Report_{safe_job}.pdf'
+                    bm_zip.writestr(report_file,report_pdf)
+                    p1,p2,p3=st.columns([1.5,2.5,1.2])
+                    p1.write(bm_code); p2.code(bm_job_id)
+                    p3.download_button('⬇️ PDF',data=report_pdf,file_name=report_file,mime='application/pdf',key=f'bm_history_pdf_{safe_job}_{row_number}',on_click='ignore',use_container_width=True)
+            bm_zip_buffer.seek(0)
+            dl2.download_button('📦 Download Breakdown PDFs (ZIP)',data=bm_zip_buffer.getvalue(),file_name=f'AQPL_Breakdown_Reports_{bm_report_from.strftime(\"%Y%m%d\")}_{bm_report_to.strftime(\"%Y%m%d\")}.zip',mime='application/zip',key=f'bm_report_zip_{bm_report_from}_{bm_report_to}_{bm_report_machine}',use_container_width=True)
+
+with T[4]:"""
+source,_bm_history_count=_runtime_re.subn(_bm_history_pattern,_bm_history_repl,source,count=1)
+if _bm_history_count!=1:
+    raise RuntimeError('AQPL Breakdown History search block could not be injected into legacy_app.py')
+
+_daily_history_pattern=r"(?s)    st\.markdown\('### 📚 Saved Daily Work'\); daily=daily_log_frame\(\)\n    if daily\.empty:st\.info\('अभी कोई Daily Work entry saved नहीं है।'\)\n    else:\n.*?        st\.markdown\('#### ✏️ Edit / Delete Saved Entry'\)"
+_daily_history_repl="""    st.markdown('### 📚 Saved Daily Work — Search & Download')
+    daily=daily_log_frame()
+    if daily.empty:
+        st.info('अभी कोई Daily Work entry saved नहीं है।')
+    else:
+        st.caption('Machine, date range, work type और status से historical daily work search करें।')
+        f1,f2,f3,f4,f5=st.columns(5)
+        daily_from=f1.date_input('From Date',value=TODAY.replace(day=1),key='daily_report_from')
+        daily_to=f2.date_input('To Date',value=TODAY,key='daily_report_to')
+        machine_filter=f3.selectbox('Machine Filter',['ALL']+sorted(daily['Machine Code'].dropna().astype(str).unique().tolist()),key='daily_report_machine')
+        type_filter=f4.selectbox('Work Type Filter',['ALL']+sorted(daily['Work Type'].dropna().astype(str).unique().tolist()),key='daily_report_type')
+        status_filter=f5.selectbox('Status Filter',['ALL']+sorted(daily['Work Status'].dropna().astype(str).unique().tolist()),key='daily_report_status')
+        if daily_from>daily_to:
+            st.error('From Date cannot be after To Date.')
+            filtered=daily.iloc[0:0].copy()
+        else:
+            filtered=daily.copy()
+            filtered['_date']=pd.to_datetime(filtered['Date'],errors='coerce').dt.date
+            filtered=filtered[(filtered['_date']>=daily_from)&(filtered['_date']<=daily_to)]
+            if machine_filter!='ALL': filtered=filtered[filtered['Machine Code'].astype(str)==machine_filter]
+            if type_filter!='ALL': filtered=filtered[filtered['Work Type'].astype(str)==type_filter]
+            if status_filter!='ALL': filtered=filtered[filtered['Work Status'].astype(str)==status_filter]
+        if filtered.empty:
+            st.info('Selected filter में कोई Daily Work record नहीं मिला।')
+        else:
+            daily_display=filtered.drop(columns=['ID','_date'],errors='ignore')
+            st.success(f'{len(daily_display)} Daily Work record(s) found.')
+            st.dataframe(daily_display,use_container_width=True,hide_index=True)
+            st.download_button('⬇️ Download Filtered Daily Work CSV',data=daily_display.to_csv(index=False).encode('utf-8-sig'),file_name=f'Daily_Maintenance_Work_{daily_from.strftime(\"%Y%m%d\")}_{daily_to.strftime(\"%Y%m%d\")}.csv',mime='text/csv',key=f'daily_work_csv_{daily_from}_{daily_to}_{machine_filter}_{type_filter}_{status_filter}',use_container_width=True)
+        st.markdown('#### ✏️ Edit / Delete Saved Entry')"""
+source,_daily_history_count=_runtime_re.subn(_daily_history_pattern,_daily_history_repl,source,count=1)
+if _daily_history_count!=1:
+    raise RuntimeError('AQPL Daily Work history search block could not be injected into legacy_app.py')
+
+_machine_history_old="""    history_view=q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? and maintenance_type=? order by id desc',(code,activity_type)); st.dataframe(history_view,use_container_width=True,hide_index=True)"""
+_machine_history_new="""    hf1,hf2=st.columns(2)
+    history_from=hf1.date_input('History From Date',value=TODAY.replace(day=1),key=f'{history_key}_from_date')
+    history_to=hf2.date_input('History To Date',value=TODAY,key=f'{history_key}_to_date')
+    history_view=q('select job_id,maintenance_type,start_dt,problem,action_taken,restart_dt,remark from history where machine_code=? and maintenance_type=? order by id desc',(code,activity_type))
+    if history_from>history_to:
+        st.error('History From Date cannot be after To Date.')
+        history_view=history_view.iloc[0:0].copy()
+    elif not history_view.empty:
+        history_view=history_view.copy()
+        history_view['_start_date']=pd.to_datetime(history_view['start_dt'],errors='coerce').dt.date
+        history_view=history_view[(history_view['_start_date']>=history_from)&(history_view['_start_date']<=history_to)].drop(columns=['_start_date'])
+    if history_view.empty:
+        st.info('Selected machine, activity type और date range में saved history नहीं मिली।')
+    else:
+        st.success(f'{len(history_view)} {activity_type} history record(s) found for {code}.')
+        st.dataframe(history_view,use_container_width=True,hide_index=True)"""
+if _machine_history_old not in source:
+    raise RuntimeError('AQPL Machine History filter anchor was not found in legacy_app.py')
+source=source.replace(_machine_history_old,_machine_history_new,1)
+
+_breakdown_report_old="""    saved_breakdowns=q('select * from breakdowns where machine_code=? order by id desc',(code,))"""
+_breakdown_report_new="""    brf1,brf2=st.columns(2)
+    breakdown_report_from=brf1.date_input('Report From Date',value=TODAY.replace(day=1),key=f'bd_report_from_{code}')
+    breakdown_report_to=brf2.date_input('Report To Date',value=TODAY,key=f'bd_report_to_{code}')
+    saved_breakdowns=q('select * from breakdowns where machine_code=? order by id desc',(code,))
+    if breakdown_report_from>breakdown_report_to:
+        st.error('Report From Date cannot be after To Date.')
+        saved_breakdowns=saved_breakdowns.iloc[0:0].copy()
+    elif not saved_breakdowns.empty:
+        bm_jobs_for_dates=q(\"select job_id,opened_at from jobs where job_type='BM' order by opened_at desc\")
+        opened_by_job={str(row.job_id):row.opened_at for _,row in bm_jobs_for_dates.iterrows()} if not bm_jobs_for_dates.empty else {}
+        saved_breakdowns=saved_breakdowns.copy()
+        saved_breakdowns['_report_dt']=pd.to_datetime(saved_breakdowns['job_id'].astype(str).map(opened_by_job),errors='coerce')
+        saved_breakdowns=saved_breakdowns[(saved_breakdowns['_report_dt'].dt.date>=breakdown_report_from)&(saved_breakdowns['_report_dt'].dt.date<=breakdown_report_to)]
+    if not saved_breakdowns.empty:
+        history_preview=saved_breakdowns[['job_id','_report_dt','failure','downtime_hr','status']].copy()
+        history_preview['_report_dt']=history_preview['_report_dt'].dt.strftime('%d-%m-%Y')
+        history_preview=history_preview.rename(columns={'job_id':'Job ID','_report_dt':'Breakdown Date','failure':'Problem / Failure','downtime_hr':'Downtime Hr','status':'Status'})
+        st.success(f'{len(history_preview)} saved Breakdown Report(s) found for {code}.')
+        st.dataframe(history_preview,use_container_width=True,hide_index=True)"""
+if _breakdown_report_old not in source:
+    raise RuntimeError('AQPL Breakdown report filter anchor was not found in legacy_app.py')
+source=source.replace(_breakdown_report_old,_breakdown_report_new,1)
 
 runtime_globals={'__name__':'__main__','__file__':str(DASHBOARD_SCRIPT),'__package__':None,'__cached__':None}
 exec(compile(source,str(DASHBOARD_SCRIPT),'exec'),runtime_globals)
