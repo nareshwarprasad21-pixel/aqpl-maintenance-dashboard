@@ -5,6 +5,14 @@ import re as _runtime_re
 DASHBOARD_SCRIPT = Path(__file__).with_name("legacy_app.py")
 source = DASHBOARD_SCRIPT.read_text(encoding="utf-8")
 
+# Daily Work Log save-time fix: preserve the Start/End Time actually submitted.
+# clear_on_submit=True was resetting form widgets to their current-time defaults on the submit rerun,
+# so the saved history could receive the reset time instead of the user's selected time.
+_daily_form_old="with st.form('daily_work_log_form',clear_on_submit=True):"
+_daily_form_new="with st.form('daily_work_log_form',clear_on_submit=False):"
+if _daily_form_old in source:
+    source=source.replace(_daily_form_old,_daily_form_new,1)
+
 # Reusable Classification screen template.
 _classification_anchor="STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-pm-plan-2026-27-v2')"
 _classification_repl=_classification_anchor+"\n_base_classification=list(CHECKS.get('Tertiary class screen',CHECKS.get('Vibro screen',[])))\nCHECKS['Classification screen']=[pt for idx,pt in enumerate(_base_classification,1) if idx not in (6,7,8,10)]"
