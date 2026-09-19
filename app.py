@@ -5,6 +5,39 @@ import re as _runtime_re
 DASHBOARD_SCRIPT = Path(__file__).with_name("legacy_app.py")
 source = DASHBOARD_SCRIPT.read_text(encoding="utf-8")
 
+# Breakdown Maintenance: date-range/month-wise report + CSV download.
+_bm_report_anchor="""            st.success(f'{jid} saved → Breakdown {start_iso} से {end_iso} तक चला। Total time: {duration_hours} hour(s) {duration_minutes} minute(s). Machine History + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
+
+with T[4]:"""
+_bm_report_repl="""            st.success(f'{jid} saved → Breakdown {start_iso} से {end_iso} तक चला। Total time: {duration_hours} hour(s) {duration_minutes} minute(s). Machine History + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
+
+    st.markdown('### 📥 Breakdown Maintenance Report - Date Range / Month-wise')
+    st.caption('From Date और To Date चुनकर selected period या पूरे month की Breakdown Maintenance report निकालें।')
+    br1,br2=st.columns(2)
+    bm_report_from=br1.date_input('From Date',value=TODAY.replace(day=1),key='bm_report_from')
+    bm_report_to=br2.date_input('To Date',value=TODAY,key='bm_report_to')
+    if bm_report_from>bm_report_to:
+        st.error('From Date cannot be after To Date.')
+    else:
+        bm_report=q(\"select id,machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark from breakdown_activity_log order by activity_dt desc\")
+        if not bm_report.empty:
+            bm_report=bm_report.copy(); bm_report['_dt']=pd.to_datetime(bm_report['activity_dt'],errors='coerce')
+            bm_report=bm_report[(bm_report['_dt'].dt.date>=bm_report_from)&(bm_report['_dt'].dt.date<=bm_report_to)]
+        if bm_report.empty:
+            st.info(f'No Breakdown Maintenance record found from {bm_report_from.strftime(\"%d-%m-%Y\")} to {bm_report_to.strftime(\"%d-%m-%Y\")}.')
+        else:
+            bm_report['Date']=bm_report['_dt'].dt.strftime('%d-%m-%Y')
+            bm_report['Start Time']=bm_report['_dt'].dt.strftime('%H:%M')
+            report_cols=['Date','Start Time','job_id','machine_code','failure','cause','action','spares','downtime_hr','status','remark']
+            bm_display=bm_report[report_cols].rename(columns={'job_id':'Job ID','machine_code':'Machine Code','failure':'Breakdown / Problem','cause':'Cause','action':'Action Taken','spares':'Spares / Material','downtime_hr':'Downtime (Hours)','status':'Status','remark':'Remarks'})
+            st.success(f'{len(bm_display)} breakdown record(s) found. Total downtime: {pd.to_numeric(bm_display[\"Downtime (Hours)\"],errors=\"coerce\").fillna(0).sum():.2f} hours.')
+            st.dataframe(bm_display,use_container_width=True,hide_index=True)
+            st.download_button('⬇️ Download Breakdown Report CSV',data=bm_display.to_csv(index=False).encode('utf-8-sig'),file_name=f'AQPL_Breakdown_Report_{bm_report_from.strftime(\"%Y%m%d\")}_{bm_report_to.strftime(\"%Y%m%d\")}.csv',mime='text/csv',key='bm_report_csv',use_container_width=True)
+
+with T[4]:"""
+if _bm_report_anchor in source:
+    source=source.replace(_bm_report_anchor,_bm_report_repl,1)
+
 # Daily Work Log save-time fix: preserve the Start/End Time actually submitted.
 # clear_on_submit=True was resetting form widgets to their current-time defaults on the submit rerun,
 # so the saved history could receive the reset time instead of the user's selected time.
