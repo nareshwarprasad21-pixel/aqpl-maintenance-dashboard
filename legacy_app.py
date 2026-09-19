@@ -231,10 +231,15 @@ repair_vibro_screen_mappings()
 def load_equipment_master():
     """Load the editable master; seed the local fallback from the bundled CSV."""
     rows=q('select machine_code,machine_name,make_model,capacity,location,is_active from equipment_master order by machine_name')
-    if rows.empty and not USE_SUPABASE:
+    if not USE_SUPABASE:
+        # Extra machines (for example the approved MID dust collectors) may be
+        # inserted before this function runs. Seed any *missing* bundled AQPL
+        # machines instead of treating those few records as a complete master.
         now=datetime.now().isoformat(timespec='seconds')
+        existing_codes=set(rows['machine_code'].dropna().astype(str).tolist()) if not rows.empty else set()
         for _,machine in STATIC_MACH.iterrows():
-            execsql('insert or replace into equipment_master(machine_code,machine_name,make_model,capacity,location,is_active,created_at,updated_at) values(?,?,?,?,?,?,?,?)',(machine.machine_code,machine.machine_name,machine.make_model,machine.capacity,machine.location,1,now,now))
+            if str(machine.machine_code) not in existing_codes:
+                execsql('insert into equipment_master(machine_code,machine_name,make_model,capacity,location,is_active,created_at,updated_at) values(?,?,?,?,?,?,?,?)',(machine.machine_code,machine.machine_name,machine.make_model,machine.capacity,machine.location,1,now,now))
         rows=q('select machine_code,machine_name,make_model,capacity,location,is_active from equipment_master order by machine_name')
     if rows.empty:
         fallback=STATIC_MACH.copy(); fallback['is_active']=True; return fallback
