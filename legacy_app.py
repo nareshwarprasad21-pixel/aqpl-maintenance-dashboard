@@ -589,7 +589,8 @@ def daily_log_frame():
         meta=daily_log_details(row.remark)
         machine=machine_row(row.machine_code) if row.machine_code in MACH.machine_code.tolist() else None
         machine_name=str(machine.machine_name) if machine is not None else str(meta.get('machine_name',''))
-        records.append({'ID':row.id,'Job ID':row.job_id,'Date':str(row.start_dt)[:10],'Shift':meta.get('shift',''),'Machine Name':machine_name,'Machine Code':row.machine_code,'Work Type':meta.get('work_type',''),'Problem / Observation':row.problem,'Work Done':row.action_taken,'Start Time':str(row.start_dt)[11:16],'End Time':str(row.restart_dt)[11:16],'Total Time':meta.get('total_time',''),'Team Members':meta.get('team_members',''),'Spares / Material':meta.get('spares',''),'Machine Status':meta.get('machine_status',''),'Work Status':meta.get('work_status',''),'Pending Action':meta.get('pending_action',''),'Target Date':meta.get('target_date',''),'Remarks':meta.get('remarks','')})
+        end_text=str(_value_or(row.restart_dt,''))
+        records.append({'ID':row.id,'Job ID':row.job_id,'Start Date':str(row.start_dt)[:10],'Date':str(row.start_dt)[:10],'Shift':meta.get('shift',''),'Machine Name':machine_name,'Machine Code':row.machine_code,'Work Type':meta.get('work_type',''),'Problem / Observation':row.problem,'Work Done':row.action_taken,'Start Time':str(row.start_dt)[11:16],'End Date':end_text[:10] if end_text else '','End Time':end_text[11:16] if len(end_text)>=16 else '','Total Time':meta.get('total_time',''),'Team Members':meta.get('team_members',''),'Spares / Material':meta.get('spares',''),'Machine Status':meta.get('machine_status',''),'Work Status':meta.get('work_status',''),'Pending Action':meta.get('pending_action',''),'Target Date':meta.get('target_date',''),'Target Time':meta.get('target_time',''),'Remarks':meta.get('remarks','')})
     return pd.DataFrame(records)
 
 DAILY_JOB_PLAN_PREFIX='DAILY_JOB_PLAN:'
@@ -1138,9 +1139,9 @@ with T[5]:
             help='Manual / Unmapped Machine चुनें जब machine Equipment Master में mapped न हो.'
         )
 
-    with st.form('daily_work_log_form',clear_on_submit=True):
+    with st.container():
         d1,d2=st.columns(2)
-        work_date=d1.date_input('Work Date',value=TODAY)
+        work_date=d1.date_input('Work Start Date',value=TODAY,key='daily_work_start_date')
         shift=d2.selectbox('Shift',['General','A','B','C'])
 
         if entry_related_to=='General / Facility Work':
@@ -1186,17 +1187,31 @@ with T[5]:
             misc_machine_name=''; misc_machine_code=''; misc_location=''
         w1,w2=st.columns(2); work_type=w1.selectbox('Work Type',['Inspection','Preventive Maintenance','Breakdown Maintenance','Lubrication','Adjustment / Alignment','Fabrication / Welding','Improvement / Modification','Electrical Work','General Maintenance','Facility Maintenance','Civil / Structural Work','Housekeeping / Cleaning','Painting Work','Safety Improvement']); team_members=w2.text_input('Team Members *',placeholder='Example: Ram Lal, Suresh')
         problem=w1.text_area('Problem / Observation *',placeholder='क्या समस्या या observation था?'); action=w2.text_area('Work Done / Action Taken *',placeholder='Maintenance team ने क्या काम किया?')
-        t1,t2,t3=st.columns(3); start_time=t1.time_input('Start Time',value=current_minute); end_time=t2.time_input('End Time',value=current_minute); spares=t3.text_input('Spares / Material Used')
-        s1,s2=st.columns(2); machine_status=s1.selectbox('Machine / Area Status',['Not Applicable','Running','Stopped','Under Maintenance','Trial Running','Normal','Restricted / Barricaded']); work_status=s2.selectbox('Work Status',['Completed','Pending','In Progress','Temporary Solution'])
-        p1,p2=st.columns([2,1]); pending_action=p1.text_input('Pending Action / Next Work',placeholder='Completed होने पर blank छोड़ें'); target_date=p2.date_input('Target Date',value=TODAY)
-        remarks=st.text_area('Remarks'); save_daily=st.form_submit_button('💾 Save Daily Work Entry',type='primary',use_container_width=True)
+        t1,t2=st.columns(2); start_time=t1.time_input('Work Start Time',value=current_minute,key='daily_work_start_time'); spares=t2.text_input('Spares / Material Used')
+        s1,s2=st.columns(2); machine_status=s1.selectbox('Machine / Area Status',['Not Applicable','Running','Stopped','Under Maintenance','Trial Running','Normal','Restricted / Barricaded']); work_status=s2.selectbox('Work Status',['Completed','Pending / In Progress','On Hold','Temporary Solution'],key='daily_work_status')
+        end_date=None; end_time=None; target_date=None; target_time=None; pending_action=''
+        if work_status=='Completed':
+            c1,c2=st.columns(2); end_date=c1.date_input('Work End Date *',value=work_date,key='daily_work_end_date'); end_time=c2.time_input('Work End Time *',value=current_minute,key='daily_work_end_time')
+            st.caption('Completed job के लिए वास्तविक completion date और time भरें।')
+        else:
+            pending_action=st.text_input('Pending Action / Next Work *',placeholder='बाकी काम / अगला action लिखें')
+            p1,p2=st.columns(2); target_date=p1.date_input('Target Completion Date *',value=max(TODAY,work_date),key='daily_target_date'); target_time=p2.time_input('Target Completion Time *',value=current_minute,key='daily_target_time')
+            st.caption('Actual Work End Date/Time job पूरा होने पर Saved Daily Work में इसी entry को edit करके भरें।')
+        remarks=st.text_area('Remarks'); save_daily=st.button('💾 Save Daily Work Entry',type='primary',use_container_width=True,key='save_daily_work_entry')
     if save_daily:
-        start_value=datetime.combine(work_date,start_time); end_value=datetime.combine(work_date,end_time)
-        if end_value<start_value:st.error('End Time, Start Time से पहले नहीं हो सकती।')
+        start_value=datetime.combine(work_date,start_time)
+        end_value=datetime.combine(end_date,end_time) if work_status=='Completed' else None
+        target_value=datetime.combine(target_date,target_time) if work_status!='Completed' else None
+        if end_value is not None and end_value<start_value:st.error('Work End Date/Time, Work Start Date/Time से पहले नहीं हो सकती।')
+        elif target_value is not None and target_value<start_value:st.error('Target Completion Date/Time, Work Start Date/Time से पहले नहीं हो सकती।')
+        elif work_status!='Completed' and not pending_action.strip():st.error('Pending / On Hold job के लिए Pending Action / Next Work required है।')
         elif not team_members.strip() or not problem.strip() or not action.strip():st.error('Team Members, Problem / Observation और Work Done required हैं।')
         elif daily_code in ['__MISC__','__FACILITY__'] and not misc_machine_name.strip():st.error('Manual/Facility entry के लिए Machine / Equipment Name या Work Area required है।')
         else:
-            minutes=int((end_value-start_value).total_seconds()//60); hours,mins=divmod(minutes,60); total_time=f'{hours}h {mins}m'; jid=new_id('DL')
+            if end_value is not None:
+                minutes=int((end_value-start_value).total_seconds()//60); hours,mins=divmod(minutes,60); total_time=f'{hours}h {mins}m'
+            else: total_time=''
+            jid=new_id('DL')
             if daily_code=='__FACILITY__':
                 resolved_name=misc_machine_name.strip()
                 resolved_code='FACILITY/'+re.sub(r'[^A-Za-z0-9]+','-',resolved_name).strip('-').upper()[:40]
@@ -1209,11 +1224,13 @@ with T[5]:
                 is_misc=True
             else:
                 mr=machine_row(daily_code); resolved_name=str(mr.machine_name); resolved_code=daily_code; resolved_location=str(mr.location); is_misc=False
-            metadata={'shift':shift,'work_type':work_type,'team_members':team_members.strip(),'spares':spares.strip(),'machine_status':machine_status,'work_status':work_status,'pending_action':pending_action.strip(),'target_date':str(target_date) if work_status!='Completed' or pending_action.strip() else '','remarks':remarks.strip(),'total_time':total_time,'machine_name':resolved_name,'machine_code':resolved_code,'location':resolved_location,'miscellaneous':is_misc,'entry_related_to':entry_related_to,'facility_area':resolved_location if daily_code=='__FACILITY__' else ''}
+            metadata={'shift':shift,'work_type':work_type,'team_members':team_members.strip(),'spares':spares.strip(),'machine_status':machine_status,'work_status':work_status,'pending_action':pending_action.strip(),'target_date':str(target_date) if target_date else '','target_time':target_time.strftime('%H:%M') if target_time else '','remarks':remarks.strip(),'total_time':total_time,'machine_name':resolved_name,'machine_code':resolved_code,'location':resolved_location,'miscellaneous':is_misc,'entry_related_to':entry_related_to,'facility_area':resolved_location if daily_code=='__FACILITY__' else ''}
             encoded=DAILY_LOG_PREFIX+json.dumps(metadata,ensure_ascii=False)
-            execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'DL',resolved_code,resolved_name,resolved_location,start_value.isoformat(timespec='minutes'),problem.strip(),work_status.upper(),0,0,end_value.isoformat(timespec='minutes')))
-            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,resolved_code,'DAILY',start_value.isoformat(timespec='minutes'),problem.strip(),action.strip(),end_value.isoformat(timespec='minutes'),encoded))
-            st.success(f'{jid} saved for {resolved_name}. Total work time: {total_time}.')
+            end_iso=end_value.isoformat(timespec='minutes') if end_value else ''
+            execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'DL',resolved_code,resolved_name,resolved_location,start_value.isoformat(timespec='minutes'),problem.strip(),work_status.upper(),0,0,end_iso))
+            execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,resolved_code,'DAILY',start_value.isoformat(timespec='minutes'),problem.strip(),action.strip(),end_iso,encoded))
+            if end_value: st.success(f'{jid} completed and saved for {resolved_name}. Total work time: {total_time}.')
+            else: st.success(f'{jid} saved as {work_status}. Target: {target_value.strftime("%d-%m-%Y %H:%M")}.')
     st.markdown('### 📚 Saved Daily Work'); daily=daily_log_frame()
     if daily.empty:st.info('अभी कोई Daily Work entry saved नहीं है।')
     else:
@@ -1225,13 +1242,46 @@ with T[5]:
         st.dataframe(filtered.drop(columns=['ID']),use_container_width=True,hide_index=True)
         st.download_button('⬇️ Download Filtered Daily Work CSV',data=filtered.drop(columns=['ID']).to_csv(index=False).encode('utf-8-sig'),file_name=f'Daily_Maintenance_Work_{date_filter}.csv',mime='text/csv',use_container_width=True)
         st.markdown('#### ✏️ Edit / Delete Saved Entry'); selected_daily=st.selectbox('Select Daily Work Job ID',daily['Job ID'].tolist(),key='daily_manage_id'); selected_row=daily[daily['Job ID']==selected_daily].iloc[0]
+        history_edit_row=q('select start_dt,restart_dt,remark from history where job_id=?',(selected_daily,)).iloc[0]
+        edit_meta=daily_log_details(history_edit_row.remark)
+        old_start=pd.to_datetime(history_edit_row.start_dt,errors='coerce'); old_end=pd.to_datetime(history_edit_row.restart_dt,errors='coerce')
+        if pd.isna(old_start): old_start=datetime.combine(TODAY,current_minute)
+        statuses=['Completed','Pending / In Progress','On Hold','Temporary Solution']
+        old_status=str(selected_row['Work Status'])
+        if old_status in ['Pending','In Progress']: old_status='Pending / In Progress'
+        edit_status=st.selectbox('Work Status — change Pending job to Completed here',statuses,index=statuses.index(old_status) if old_status in statuses else 0,key=f'daily_edit_status_{selected_daily}')
         with st.form(f'daily_edit_{selected_daily}'):
             e1,e2=st.columns(2); edit_problem=e1.text_area('Problem / Observation',value=str(selected_row['Problem / Observation'])); edit_action=e2.text_area('Work Done / Action Taken',value=str(selected_row['Work Done']))
-            e3,e4,e5=st.columns(3); edit_team=e3.text_input('Team Members',value=str(selected_row['Team Members'])); statuses=['Completed','Pending','In Progress','Temporary Solution']; edit_status=e4.selectbox('Work Status',statuses,index=statuses.index(selected_row['Work Status']) if selected_row['Work Status'] in statuses else 0); edit_pending=e5.text_input('Pending Action',value=str(selected_row['Pending Action']))
-            edit_remarks=st.text_area('Remarks',value=str(selected_row['Remarks'])); update_daily=st.form_submit_button('💾 Update Entry',type='primary')
+            sd1,sd2=st.columns(2); edit_start_date=sd1.date_input('Work Start Date',value=old_start.date()); edit_start_time=sd2.time_input('Work Start Time',value=old_start.time().replace(second=0,microsecond=0))
+            edit_end_date=None; edit_end_time=None; edit_target_date=None; edit_target_time=None; edit_pending=''
+            if edit_status=='Completed':
+                end_default=old_end if not pd.isna(old_end) else datetime.now(ZoneInfo('Asia/Kolkata')).replace(tzinfo=None,second=0,microsecond=0)
+                ed1,ed2=st.columns(2); edit_end_date=ed1.date_input('Work End Date *',value=end_default.date()); edit_end_time=ed2.time_input('Work End Time *',value=end_default.time().replace(second=0,microsecond=0))
+            else:
+                edit_pending=st.text_input('Pending Action / Next Work *',value=str(selected_row['Pending Action']))
+                saved_target=pd.to_datetime(f"{edit_meta.get('target_date','')} {edit_meta.get('target_time','')}",errors='coerce')
+                if pd.isna(saved_target): saved_target=max(datetime.combine(TODAY,current_minute),old_start)
+                td1,td2=st.columns(2); edit_target_date=td1.date_input('Target Completion Date *',value=saved_target.date()); edit_target_time=td2.time_input('Target Completion Time *',value=saved_target.time().replace(second=0,microsecond=0))
+            e3,e4=st.columns(2); edit_team=e3.text_input('Team Members',value=str(selected_row['Team Members'])); edit_remarks=e4.text_input('Remarks',value=str(selected_row['Remarks']))
+            update_daily=st.form_submit_button('💾 Update Entry',type='primary')
         if update_daily:
-            history_row=q('select remark from history where job_id=?',(selected_daily,)).iloc[0]; meta=daily_log_details(history_row.remark); meta.update({'team_members':edit_team.strip(),'work_status':edit_status,'pending_action':edit_pending.strip(),'remarks':edit_remarks.strip()})
-            execsql('update history set problem=?,action_taken=?,remark=? where job_id=?',(edit_problem.strip(),edit_action.strip(),DAILY_LOG_PREFIX+json.dumps(meta,ensure_ascii=False),selected_daily)); execsql('update jobs set problem=?,status=? where job_id=?',(edit_problem.strip(),edit_status.upper(),selected_daily)); st.success(f'{selected_daily} updated successfully.'); st.rerun()
+            edit_start_dt=datetime.combine(edit_start_date,edit_start_time)
+            edit_end_dt=datetime.combine(edit_end_date,edit_end_time) if edit_status=='Completed' else None
+            edit_target_dt=datetime.combine(edit_target_date,edit_target_time) if edit_status!='Completed' else None
+            if edit_end_dt is not None and edit_end_dt<edit_start_dt: st.error('Work End Date/Time, Work Start Date/Time से पहले नहीं हो सकती।')
+            elif edit_target_dt is not None and edit_target_dt<edit_start_dt: st.error('Target Completion Date/Time, Work Start Date/Time से पहले नहीं हो सकती।')
+            elif edit_status!='Completed' and not edit_pending.strip(): st.error('Pending / On Hold job के लिए Pending Action / Next Work required है।')
+            else:
+                if edit_end_dt is not None:
+                    total_minutes=int((edit_end_dt-edit_start_dt).total_seconds()//60); total_hours,total_mins=divmod(total_minutes,60); edit_total_time=f'{total_hours}h {total_mins}m'
+                else: edit_total_time=''
+                meta=edit_meta; meta.update({'team_members':edit_team.strip(),'work_status':edit_status,'pending_action':edit_pending.strip(),'target_date':str(edit_target_date) if edit_target_date else '','target_time':edit_target_time.strftime('%H:%M') if edit_target_time else '','remarks':edit_remarks.strip(),'total_time':edit_total_time})
+                start_iso=edit_start_dt.isoformat(timespec='minutes'); end_iso=edit_end_dt.isoformat(timespec='minutes') if edit_end_dt else ''
+                execsql('update history set start_dt=?,problem=?,action_taken=?,restart_dt=?,remark=? where job_id=?',(start_iso,edit_problem.strip(),edit_action.strip(),end_iso,DAILY_LOG_PREFIX+json.dumps(meta,ensure_ascii=False),selected_daily))
+                execsql('update jobs set opened_at=?,problem=?,status=?,closed_at=? where job_id=?',(start_iso,edit_problem.strip(),edit_status.upper(),end_iso,selected_daily))
+                if edit_end_dt: st.success(f'{selected_daily} completed successfully. Total work time: {edit_total_time}.')
+                else: st.success(f'{selected_daily} updated as {edit_status}. Target: {edit_target_dt.strftime("%d-%m-%Y %H:%M")}.')
+                st.rerun()
         confirm_daily_delete=st.checkbox(f'I confirm: delete {selected_daily}',key=f'daily_delete_confirm_{selected_daily}')
         if st.button('🗑️ Delete Daily Work Entry',disabled=not confirm_daily_delete,key=f'daily_delete_{selected_daily}'):
             execsql('delete from history where job_id=?',(selected_daily,)); execsql('delete from jobs where job_id=?',(selected_daily,)); st.success(f'{selected_daily} deleted.'); st.rerun()

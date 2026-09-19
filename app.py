@@ -38,14 +38,6 @@ with T[4]:"""
 if _bm_report_anchor in source:
     source=source.replace(_bm_report_anchor,_bm_report_repl,1)
 
-# Daily Work Log save-time fix: preserve the Start/End Time actually submitted.
-# clear_on_submit=True was resetting form widgets to their current-time defaults on the submit rerun,
-# so the saved history could receive the reset time instead of the user's selected time.
-_daily_form_old="with st.form('daily_work_log_form',clear_on_submit=True):"
-_daily_form_new="with st.form('daily_work_log_form',clear_on_submit=False):"
-if _daily_form_old in source:
-    source=source.replace(_daily_form_old,_daily_form_new,1)
-
 # Reusable Classification screen template.
 _classification_anchor="STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-pm-plan-2026-27-v2')"
 _classification_repl=_classification_anchor+"\n_base_classification=list(CHECKS.get('Tertiary class screen',CHECKS.get('Vibro screen',[])))\nCHECKS['Classification screen']=[pt for idx,pt in enumerate(_base_classification,1) if idx not in (6,7,8,10)]"
@@ -265,36 +257,6 @@ permit_new="""        permit_type=str(r.permit_type or '').strip().upper()
         if save:execsql('update permits set supervisor=?,activity=?,start_dt=?,end_dt=?,precautions=?,status=? where permit_no=?',(sup,activity,start,end,str(precautions or '').strip(),status,pid));st.success('Permit updated.')
 """
 if permit_old in source: source=source.replace(permit_old,permit_new,1)
-
-# Daily Work Log: allow Start Time and End Time editing and recalculate Total Time.
-daily_edit_old="""        with st.form(f'daily_edit_{selected_daily}'):
-            e1,e2=st.columns(2); edit_problem=e1.text_area('Problem / Observation',value=str(selected_row['Problem / Observation'])); edit_action=e2.text_area('Work Done / Action Taken',value=str(selected_row['Work Done']))
-            e3,e4,e5=st.columns(3); edit_team=e3.text_input('Team Members',value=str(selected_row['Team Members'])); statuses=['Completed','Pending','In Progress','Temporary Solution']; edit_status=e4.selectbox('Work Status',statuses,index=statuses.index(selected_row['Work Status']) if selected_row['Work Status'] in statuses else 0); edit_pending=e5.text_input('Pending Action',value=str(selected_row['Pending Action']))
-            edit_remarks=st.text_area('Remarks',value=str(selected_row['Remarks'])); update_daily=st.form_submit_button('💾 Update Entry',type='primary')
-        if update_daily:
-            history_row=q('select remark from history where job_id=?',(selected_daily,)).iloc[0]; meta=daily_log_details(history_row.remark); meta.update({'team_members':edit_team.strip(),'work_status':edit_status,'pending_action':edit_pending.strip(),'remarks':edit_remarks.strip()})
-            execsql('update history set problem=?,action_taken=?,remark=? where job_id=?',(edit_problem.strip(),edit_action.strip(),DAILY_LOG_PREFIX+json.dumps(meta,ensure_ascii=False),selected_daily)); execsql('update jobs set problem=?,status=? where job_id=?',(edit_problem.strip(),edit_status.upper(),selected_daily)); st.success(f'{selected_daily} updated successfully.'); st.rerun()
-"""
-daily_edit_new="""        history_edit_row=q('select start_dt,restart_dt,remark from history where job_id=?',(selected_daily,)).iloc[0]
-        old_start=pd.to_datetime(history_edit_row.start_dt,errors='coerce'); old_end=pd.to_datetime(history_edit_row.restart_dt,errors='coerce')
-        if pd.isna(old_start): old_start=datetime.combine(TODAY,datetime.now().time().replace(second=0,microsecond=0))
-        if pd.isna(old_end): old_end=old_start
-        with st.form(f'daily_edit_{selected_daily}'):
-            e1,e2=st.columns(2); edit_problem=e1.text_area('Problem / Observation',value=str(selected_row['Problem / Observation'])); edit_action=e2.text_area('Work Done / Action Taken',value=str(selected_row['Work Done']))
-            t1,t2=st.columns(2); edit_start_time=t1.time_input('Start Time',value=old_start.time().replace(second=0,microsecond=0)); edit_end_time=t2.time_input('End Time',value=old_end.time().replace(second=0,microsecond=0))
-            e3,e4,e5=st.columns(3); edit_team=e3.text_input('Team Members',value=str(selected_row['Team Members'])); statuses=['Completed','Pending','In Progress','Temporary Solution']; edit_status=e4.selectbox('Work Status',statuses,index=statuses.index(selected_row['Work Status']) if selected_row['Work Status'] in statuses else 0); edit_pending=e5.text_input('Pending Action',value=str(selected_row['Pending Action']))
-            edit_remarks=st.text_area('Remarks',value=str(selected_row['Remarks'])); update_daily=st.form_submit_button('💾 Update Entry',type='primary')
-        if update_daily:
-            edit_start_dt=datetime.combine(old_start.date(),edit_start_time); edit_end_dt=datetime.combine(old_end.date(),edit_end_time)
-            if edit_end_dt<edit_start_dt:
-                st.error('End Time cannot be earlier than Start Time.')
-            else:
-                total_minutes=int((edit_end_dt-edit_start_dt).total_seconds()//60); total_hours,total_mins=divmod(total_minutes,60); edit_total_time=f'{total_hours}h {total_mins}m'
-                meta=daily_log_details(history_edit_row.remark); meta.update({'team_members':edit_team.strip(),'work_status':edit_status,'pending_action':edit_pending.strip(),'remarks':edit_remarks.strip(),'total_time':edit_total_time})
-                start_iso=edit_start_dt.isoformat(timespec='minutes'); end_iso=edit_end_dt.isoformat(timespec='minutes')
-                execsql('update history set start_dt=?,problem=?,action_taken=?,restart_dt=?,remark=? where job_id=?',(start_iso,edit_problem.strip(),edit_action.strip(),end_iso,DAILY_LOG_PREFIX+json.dumps(meta,ensure_ascii=False),selected_daily)); execsql('update jobs set problem=?,status=? where job_id=?',(edit_problem.strip(),edit_status.upper(),selected_daily)); st.success(f'{selected_daily} updated successfully. Total time: {edit_total_time}.'); st.rerun()
-"""
-if daily_edit_old in source: source=source.replace(daily_edit_old,daily_edit_new,1)
 
 runtime_globals={'__name__':'__main__','__file__':str(DASHBOARD_SCRIPT),'__package__':None,'__cached__':None}
 exec(compile(source,str(DASHBOARD_SCRIPT),'exec'),runtime_globals)
