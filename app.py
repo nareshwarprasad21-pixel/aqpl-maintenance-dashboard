@@ -44,7 +44,7 @@ _classification_repl=_classification_anchor+"\n_base_classification=list(CHECKS.
 if _classification_anchor in source: source=source.replace(_classification_anchor,_classification_repl,1)
 
 # Force Streamlit to reload updated PM checklist JSON after TOMRA colour-sorter template changes.
-source=source.replace("STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-pm-plan-2026-27-v2')","STATIC_MACH,PLAN,CHECKS=load_static('2026-09-20-color-sorter-v3')",1)
+source=source.replace("STATIC_MACH,PLAN,CHECKS=load_static('2026-09-06-pm-plan-2026-27-v2')","STATIC_MACH,PLAN,CHECKS=load_static('2026-09-20-color-sorter-v4')",1)
 
 # PM Action / Remark smart + saved suggestions for all machines/checkpoints.
 old_block="""        results=[]
