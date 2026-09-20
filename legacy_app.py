@@ -685,6 +685,7 @@ BELT_CONVEYOR_CODES={
     'AQPL/TER BC-13','AQPL/TER BC-14','AQPL/TER H-7'
 }
 DUST_COLLECTOR_CODES={'AQPL/MID DC-1','AQPL/MID DC-2','AQPL/MID DC-3'}
+COLOR_SORTER_CODES={'AQPL/TMR-1','AQPL/TMR-2','AQPL/TMR-3'}
 
 def checklist_for(code):
     # Dedicated pneumatic-line checklist must override any stale mapping row.
@@ -693,6 +694,9 @@ def checklist_for(code):
     if code=='AQPL/TX':return 'TRANSFORMER'
     if code=='AQPL/GAS Y HEATER':return 'GAS YARD HEATER'
     if code in DUST_COLLECTOR_CODES:return 'DUST COLLECTOR'
+    # One approved common PM checklist for all TOMRA colour sorters.
+    # This deliberately overrides old Tomara-1/2/3 saved mappings.
+    if code in COLOR_SORTER_CODES:return 'COLOR SORTER MACHINE'
     r=q('select sheet_name from checklist_map where machine_code=?',(code,))
     if len(r) and r.iloc[0,0] in CHECKS:return r.iloc[0,0]
     if code in BELT_CONVEYOR_CODES:return 'BELT CONVEYOR'
