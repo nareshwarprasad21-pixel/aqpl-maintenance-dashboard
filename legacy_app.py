@@ -938,18 +938,9 @@ with T[3]:
             st.error('Breakdown / Problem Details field is required.')
         else:
             jid=new_id('BM'); start_iso=breakdown_start_dt.isoformat(timespec='minutes'); end_iso=breakdown_end_dt.isoformat(timespec='minutes'); execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(jid,'BM',code,mr.machine_name,mr.location,start_iso,problem,'CLOSED',int(hot),int(height),end_iso)); execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(jid,code,'BM',start_iso,problem,action,end_iso,f'BM completed; Total downtime: {duration_hours}h {duration_minutes}m')); execsql('insert into breakdowns(job_id,machine_code,failure,cause,downtime_hr,spares,action,status) values(?,?,?,?,?,?,?,?)',(jid,code,problem,cause,downtime,spares,action,'CLOSED')); execsql('insert into breakdown_activity_log(machine_code,job_id,activity_dt,failure,cause,action,spares,downtime_hr,status,remark) values(?,?,?,?,?,?,?,?,?,?)',(code,jid,start_iso,problem,cause,action,spares,downtime,'CLOSED',f'Completed: {end_iso}; Total downtime: {duration_hours}h {duration_minutes}m')); execsql('insert into whywhy(job_id,machine_code,problem,status) values(?,?,?,?)',(jid,code,problem,'DRAFT'))
-            # One completed BM report automatically appears in Daily Work Log for the same machine.
-            # The source BM Job ID in metadata prevents a duplicate automatic Daily entry.
-            if not breakdown_daily_log_exists(jid):
-                daily_jid=new_id('DL')
-                daily_total_time=f'{duration_hours}h {duration_minutes}m'
-                daily_metadata={'shift':'Auto from Breakdown','work_type':'Breakdown Maintenance','team_members':'Auto-created from Breakdown Report','spares':spares.strip(),'machine_status':'Running / Restored','work_status':'Completed','pending_action':'','target_date':'','target_time':'','remarks':f'Auto-linked from Breakdown Job ID: {jid}; Cause: {cause.strip() or "-"}; Downtime: {daily_total_time}','total_time':daily_total_time,'machine_name':str(mr.machine_name),'machine_code':code,'location':str(mr.location),'miscellaneous':False,'entry_related_to':'Machine / Equipment','facility_area':'','source_bm_job_id':jid}
-                daily_encoded=DAILY_LOG_PREFIX+json.dumps(daily_metadata,ensure_ascii=False)
-                execsql('insert into jobs values(?,?,?,?,?,?,?,?,?,?,?)',(daily_jid,'DL',code,mr.machine_name,mr.location,start_iso,problem,'COMPLETED',0,0,end_iso))
-                execsql('insert into history(job_id,machine_code,maintenance_type,start_dt,problem,action_taken,restart_dt,remark) values(?,?,?,?,?,?,?,?)',(daily_jid,code,'DAILY',start_iso,problem,action,end_iso,daily_encoded))
             if hot:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HWP'),jid,'HOT WORK',code,problem,'DRAFT'))
             if height:execsql('insert into permits(permit_no,job_id,permit_type,machine_code,activity,status) values(?,?,?,?,?,?)',(new_id('HTP'),jid,'HEIGHT WORK',code,problem,'DRAFT'))
-            st.success(f'{jid} saved → Breakdown {start_iso} से {end_iso} तक चला। Total time: {duration_hours} hour(s) {duration_minutes} minute(s). Machine History + Daily Work Log + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
+            st.success(f'{jid} saved → Breakdown {start_iso} से {end_iso} तक चला। Total time: {duration_hours} hour(s) {duration_minutes} minute(s). Machine History + Breakdown History + Why-Why draft + applicable Permit draft(s) linked automatically.')
 
 with T[4]:
     st.subheader('📋 Daily Job Plan / Pending Jobs')
