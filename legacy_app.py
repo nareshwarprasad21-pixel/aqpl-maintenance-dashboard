@@ -228,6 +228,16 @@ def repair_vibro_screen_mappings():
 
 repair_vibro_screen_mappings()
 
+def ensure_color_sorter_mappings():
+    """Keep all approved TOMRA machines mapped to the common Color Sorter checklist."""
+    for machine_code in ('AQPL/TMR-1','AQPL/TMR-2','AQPL/TMR-3'):
+        execsql(
+            'insert or replace into checklist_map(machine_code,sheet_name) values(?,?)',
+            (machine_code,'COLOR SORTER MACHINE')
+        )
+
+ensure_color_sorter_mappings()
+
 def load_equipment_master():
     """Load the editable master; seed the local fallback from the bundled CSV."""
     rows=q('select machine_code,machine_name,make_model,capacity,location,is_active from equipment_master order by machine_name')
